@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 from scipy import linalg
 
-from tlpipe.map import algebra as al
+from fpipe.map import algebra as al
 
 from constants import T_infinity, T_huge, T_large, T_medium, T_small, T_sys
 from constants import f_medium, f_large

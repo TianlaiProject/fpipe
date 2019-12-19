@@ -66,7 +66,7 @@ import numpy as np
 import numpy.lib.format as npfor
 from numpy.lib.utils import safe_eval
 
-import tlpipe.map.cubic_conv_interpolation as cci
+import fpipe.map.cubic_conv_interpolation as cci
 
 import tlpipe.kiyopy.custom_exceptions as ce
 

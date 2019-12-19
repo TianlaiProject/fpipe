@@ -6,10 +6,12 @@ from caput import mpiutil
 from tlpipe.pipeline.pipeline import OneAndOne
 from tlpipe.timestream import timestream_task
 from tlpipe.utils.path_util import output_path
-from tlpipe.map import algebra as al
-from tlpipe.map.pointing import Pointing
-from tlpipe.map.noise_model import Noise
-from tlpipe.map import mapbase
+
+from fpipe.map import algebra as al
+from fpipe.map.pointing import Pointing
+from fpipe.map.noise_model import Noise
+from fpipe.map import mapbase
+
 import healpy as hp
 import numpy as np
 import scipy as sp
