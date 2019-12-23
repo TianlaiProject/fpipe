@@ -1,12 +1,14 @@
 """Module to do the map-making."""
 
 import matplotlib.pyplot as plt
+import logging
 
 from caput import mpiutil
+from caput import mpiarray
 from tlpipe.pipeline.pipeline import OneAndOne
-from tlpipe.timestream import timestream_task
 from tlpipe.utils.path_util import output_path
 
+from fpipe.timestream import timestream_task
 from fpipe.map import algebra as al
 from fpipe.map.pointing import Pointing
 from fpipe.map.noise_model import Noise
@@ -15,96 +17,41 @@ from fpipe.map import mapbase
 import healpy as hp
 import numpy as np
 import scipy as sp
-from scipy import linalg, special
+#from scipy import linalg
+from numpy import linalg
+from scipy import special
 from scipy.ndimage import gaussian_filter
 import h5py
 import sys
 import gc
 
+logger = logging.getLogger(__name__)
+
 from constants import T_infinity, T_huge, T_large, T_medium, T_small, T_sys
 from constants import f_medium, f_large
 
 
-class CleanMap_GBT(mapbase.MultiMapBase, OneAndOne):
 
-    params_init = {
-
-            'save_cov' : False,
-            'threshold' : 1.e-3,
-            }
-
-    prefix = 'cm_'
-
-
-    def read_input(self):
-
-        for input_file in self.input_files:
-
-            print input_file
-            self.open(input_file)
-
-
-        self.map_tmp = al.make_vect(al.load_h5(self.df_in[0], 'dirty_map'))
-        self.map_shp = self.map_tmp.shape
-        for output_file in self.output_files:
-            output_file = output_path(output_file, 
-                relative= not output_file.startswith('/'))
-            self.allocate_output(output_file, 'w')
-            self.create_dataset_like(-1, 'clean_map',  self.map_tmp)
-            self.create_dataset_like(-1, 'noise_diag', self.map_tmp)
-
-        return 1
-
-    def process(self, input):
-
-        def _indx_f(x, shp): 
-            if x >= np.prod(shp): return 
-            _i = [int(x / np.prod(shp[1:])), ]
-            for i in range(1, len(shp)): 
-                x -= _i[i-1] * np.prod(shp[i:])
-                _i += [int(x / np.prod(shp[i+1:])),]
-            return tuple(_i)
-
-        threshold = self.params['threshold']
-        task_n = np.prod(self.map_shp[:-2])
-        for task_ind in mpiutil.mpirange(task_n):
-
-
-            indx = _indx_f(task_ind, self.map_shp[:-2])
-            print task_ind, indx
-
-
-            map_shp = self.map_shp[-2:]
-            _dirty_map = np.zeros(map_shp)
-            _cov_inv = np.zeros(map_shp * 2, dtype=float)
-            for df in self.df_in:
-                _dirty_map += df['dirty_map'][indx + (slice(None), )]
-                _cov_inv   += df['cov_inv'][indx + (slice(None), )]
-
-            print _cov_inv.max(), _cov_inv.min()
-
-            clean_map, noise_diag = make_cleanmap(_dirty_map, _cov_inv, threshold)
-            self.df_out[-1]['clean_map' ][indx + (slice(None), )] = clean_map
-            self.df_out[-1]['noise_diag'][indx + (slice(None), )] = noise_diag
-
-    def finish(self):
-        if mpiutil.rank0:
-            print 'Finishing CleanMapMaking.'
-
-        self.__del__()
-
-        mpiutil.barrier()
-
-class DirtyMap_GBT(mapbase.MapBase, timestream_task.TimestreamTask):
+class DirtyMap_GBT(timestream_task.TimestreamTask, mapbase.MapBase):
 
     params_init = {
             #'ra_range' :  [0., 25.],
             #'ra_delta' :  0.5,
             #'dec_range' : [-4.0, 5.0],
             #'dec_delta' : 0.5,
+
+            'healpix_map' : True,
+            'nside' : 1024,
+
             'field_centre' : (12., 0.,),
             'pixel_spacing' : 0.5,
             'map_shape'     : (10, 10),
+            'ra_block_olp' : 20,
+            'ra_block_len' : 10,
+
+            'beam_fwhm' : 3./60.,
+            'beam_cut'  : 0.01,
+
             'interpolation' : 'linear',
             'tblock_len' : 100,
             'data_sets'  : 'vis',
@@ -119,7 +66,13 @@ class DirtyMap_GBT(mapbase.MapBase, timestream_task.TimestreamTask):
 
     prefix = 'dm_'
 
+    def __init__(self, *args, **kwargs):
+
+        super(DirtyMap_GBT, self).__init__(*args, **kwargs)
+        mapbase.MapBase.__init__(self)
+
     def setup(self):
+
 
         params = self.params
         self.n_ra, self.n_dec = params['map_shape']
@@ -136,20 +89,131 @@ class DirtyMap_GBT(mapbase.MapBase, timestream_task.TimestreamTask):
         map_tmp.set_axis_info('dec',  params['field_centre'][1], self.dec_spacing)
         self.map_tmp = map_tmp
 
+        # split ra
+        ra_total_len = self.n_ra
+        ra_block_olp = self.params['ra_block_olp']
+        ra_block_len = self.params['ra_block_len']
+        ra_block_num = int(np.ceil(ra_total_len / float(ra_block_len)))
+        if mpiutil.rank0:
+            logger.debug('split RA into %d x %d'%(ra_block_num, ra_block_len))
+            logger.debug('RA overlap set to %d'%ra_block_olp)
+
+        map_global_slice = []
+        map_local_slice = []
+        for i in xrange(ra_block_len):
+            ra_block_st = min( i * ra_block_len,  ra_total_len - 1)
+            ra_block_ed = min((i + 1) * ra_block_len, ra_total_len)
+            map_global_slice.append(slice(ra_block_st, ra_block_ed))
+
+            ra_ovlap_st = max(ra_block_st - ra_block_olp, 0)
+            ra_ovlap_ed = min(ra_block_ed + ra_block_olp, ra_total_len)
+
+            #ra_local_len = ra_ovlap_ed - ra_ovlap_st
+            #ra_ovlap_st = ra_block_st - ra_ovlap_st
+            #ra_ovlap_ed = ra_ovlap_st + ra_block_len
+
+            map_local_slice.append(slice(ra_ovlap_st, ra_ovlap_ed))
+
+        self.map_global_slice = map_global_slice 
+        self.map_local_slice = map_local_slice 
+
+            #map_local_shp = (ra_local_len, self.n_dec)
+            #logger.debug('RANK %02d: local map shape %3d x %3d'%\
+            #        ((mpiutil.rank, ) + self.map_local_shp))
+
+        #map_local_tmp = np.zeros(self.map_local_shp)
+        #map_local_tmp = al.make_vect(map_local_tmp, axis_names=axis_names)
+        #ra_axis_local = map_tmp.get_axis('ra')[ra_ovlap_st : ra_ovlap_ed]
+        #ra_local_centre = ra_axis_local[ra_local_len//2]
+        #map_local_tmp.set_axis_info('ra',   ra_local_centre, self.ra_spacing)
+        #map_local_tmp.set_axis_info('dec',  params['field_centre'][1], self.dec_spacing)
+        #self.map_local_tmp = map_local_tmp
+
 
     def process(self, ts):
 
         show_progress = self.params['show_progress']
         progress_step = self.params['progress_step']
 
+        ra_axis  = self.map_tmp.get_axis('ra')
+        dec_axis = self.map_tmp.get_axis('dec')
+        msg = 'RANK %03d:  RA  Range [%5.2f, %5.2f] deg'%(
+                mpiutil.rank, ra_axis.min(), ra_axis.max())
+        logger.info(msg)
+        msg = 'RANK %03d:  Dec Range [%5.2f, %5.2f] deg\n'%(
+                mpiutil.rank, dec_axis.min(), dec_axis.max())
+        logger.info(msg)
+
+
         self.init_output()
+        ns = ts['ns_on'].local_data
+        ts.local_vis_mask[:] += ns[:, None, None, :]
 
         func = self.init_ps_datasets(ts)
 
+        vis_var = mpiarray.MPIArray.wrap(np.zeros(ts.vis.local_shape), 0)
+        #vis_var = mpiarray.MPIArray.wrap(np.ones(ts.vis.local_shape), 0)
+        axis_order = tuple(xrange(len(ts.vis.shape)))
+        ts.create_time_ordered_dataset('vis_var', data=vis_var, axis_order=axis_order)
+        var  = ts['vis_var'][:]
+        #print mpiutil.rank, var.shape
+
+        ts.bl_data_operate(self.init_vis, full_data=True, copy_data=False, 
+                show_progress=show_progress, progress_step=progress_step, 
+                keep_dist_axis=False)
+        mpiutil.barrier()
+        vis_var = ts['vis_var'].local_data
+        vis_var = mpiutil.allreduce(vis_var)
+        ts['vis_var'][:] = vis_var
+
         if not func is None:
+
+            ts.redistribute('time')
             func(self.make_map, full_data=True, copy_data=True, 
                     show_progress=show_progress, 
                     progress_step=progress_step, keep_dist_axis=False)
+
+            self.df.close()
+
+        mpiutil.barrier()
+
+    def init_vis(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        time = ts['sec1970'][:]
+        n_time = time.shape[0]
+        tblock_len = self.params['tblock_len']
+        if tblock_len is None:
+            tblock_len = n_time
+
+        if self.params['deweight_time_slope']:
+            n_poly = 2
+        else:
+            n_poly = 1
+
+        vis_var = ts['vis_var'].local_data
+
+        for st in range(0, n_time, tblock_len):
+            et = st + tblock_len
+            _time = time[st:et] #ts['sec1970'][st:et]
+
+            _vis_mask = (vis_mask[st:et,...]).astype('bool')
+            _vis = vis[st:et,...]
+            _vis[_vis_mask] = 0.
+
+            sub_ortho_poly(_vis, _time, ~_vis_mask, n_poly)
+
+            vis[st:et,...] = _vis
+
+            _vars = sp.sum(_vis ** 2., axis=0)
+            _cont = sp.sum(~_vis_mask, axis=0) * 1.
+            _bad = _cont == 0
+            _cont[_bad] = np.inf
+            _vars /= _cont
+            #_vars[_bad] = T_infinity ** 2.
+            _bad = _vars < T_small ** 2
+            _vars[_bad] = T_small ** 2
+            vis_var[st:et, ..., gi] += _vars[None, :]
+
 
     def init_output(self):
 
@@ -188,6 +252,7 @@ class DirtyMap_GBT(mapbase.MapBase, timestream_task.TimestreamTask):
         dirty_map_tmp.set_axis_info('freq', freq_c, freq_d)
         dirty_map_tmp.set_axis_info('ra',   field_centre[0], self.ra_spacing)
         dirty_map_tmp.set_axis_info('dec',  field_centre[1], self.dec_spacing)
+        self.map_axis_names = axis_names
 
         self.create_dataset_like('dirty_map',  dirty_map_tmp)
 
@@ -197,16 +262,16 @@ class DirtyMap_GBT(mapbase.MapBase, timestream_task.TimestreamTask):
 
         self.df['mask'] = np.zeros([n_bl, n_pol, n_freq])
 
-        if self.params['save_cov']:
-            axis_names = ('bl', 'pol', 'freq', 'ra', 'dec', 'ra', 'dec')
-            cov_tmp = np.zeros((n_bl, n_pol, n_freq) +  self.map_shp + self.map_shp)
-            cov_tmp = al.make_vect(cov_tmp, axis_names=axis_names)
-            cov_tmp.set_axis_info('bl',   np.arange(n_bl)[n_bl//2],   1)
-            cov_tmp.set_axis_info('pol',  np.arange(n_pol)[n_pol//2], 1)
-            cov_tmp.set_axis_info('freq', freq_c, freq_d)
-            cov_tmp.set_axis_info('ra',   field_centre[0], self.ra_spacing)
-            cov_tmp.set_axis_info('dec',  field_centre[1], self.dec_spacing)
-            self.create_dataset_like('cov_inv', cov_tmp)
+        #if self.params['save_cov']:
+        axis_names = ('bl', 'pol', 'freq', 'ra', 'dec', 'ra', 'dec')
+        cov_tmp = np.zeros((n_bl, n_pol, n_freq) +  self.map_shp + self.map_shp)
+        cov_tmp = al.make_vect(cov_tmp, axis_names=axis_names)
+        cov_tmp.set_axis_info('bl',   np.arange(n_bl)[n_bl//2],   1)
+        cov_tmp.set_axis_info('pol',  np.arange(n_pol)[n_pol//2], 1)
+        cov_tmp.set_axis_info('freq', freq_c, freq_d)
+        cov_tmp.set_axis_info('ra',   field_centre[0], self.ra_spacing)
+        cov_tmp.set_axis_info('dec',  field_centre[1], self.dec_spacing)
+        self.create_dataset_like('cov_inv', cov_tmp)
 
         self.df['pol'] = self.pol
         self.df['bl']  = self.bl
@@ -217,109 +282,138 @@ class DirtyMap_GBT(mapbase.MapBase, timestream_task.TimestreamTask):
 
     def make_map(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
 
-        #print vis.shape, li, gi, bl
-        #fi, pi, bi = gi
-        if not isinstance(li, tuple):
-            li = (li, )
-        if not isinstance(gi, tuple):
-            gi = (gi, )
-        idx = gi[::-1]
-        #print ts.keys()
+        print "make map vis shape = ", vis.shape
+
+        vis_idx = gi[::-1]
+        vis_axis_names = ('bl', 'pol', 'freq')
+        map_axis_names = self.map_axis_names
+        map_idx = [vis_idx[ii] for ii, name in enumerate(vis_axis_names) 
+                if name in map_axis_names]
+        map_idx = tuple(map_idx)
+        #map_slice       = (slice(self.ra_block_st, self.ra_block_ed), slice(None))
+        #map_local_slice = (slice(self.ra_ovlap_st, self.ra_ovlap_ed), slice(None))
+
         print "RANK%03d:"%mpiutil.rank + \
                 " Local  (" + ("%03d, "*len(li))%li + ")," +\
                 " Global (" + ("%03d, "*len(gi))%gi + ")"
+
         if np.all(vis_mask):
             print "\t All masked, continue"
-            self.df['mask'][idx] = 1
+            self.df['mask'][map_idx[:-1]] = 1
             return
 
         vis_shp = vis.shape
-        ra   = ts['ra'][:]
-        dec  = ts['dec'][:]
-        if len(vis_shp) == 1:
-            vis      = vis[:, None]
-            vis_mask = vis_mask[:, None]
-            vis_shp  = vis.shape
-        else:
-            #print vis_shp
-            #print ra.shape
-            _bc = [None, ] * len(vis_shp)
-            _bc[0] = slice(None)
-            if len(ra.shape) == 2:
-                _bc[-1] = slice(None)
-            ra  = ra[_bc]  * np.ones(vis_shp)
-            dec = dec[_bc] * np.ones(vis_shp)
+        ra   = ts['ra'][:, gi[-1]]
+        dec  = ts['dec'][:, gi[-1]]
+        vis_var = ts['vis_var'][ (slice(None), ) + gi ]
 
-            vis_shp        = (vis_shp[0], np.prod(vis_shp[1:]))
-            vis.shape      = vis_shp
-            vis_mask.shape = vis_shp
-            ra.shape       = vis_shp
-            dec.shape      = vis_shp
-
-        tblock_len = self.params['tblock_len']
-        if self.params['deweight_time_slope']:
-            n_poly = 2
-        else:
-            n_poly = 1
+        ra_shp = ra.shape
+        var_shp = vis_var.shape
+        logger.debug('RANK %02d: vis shape'%mpiutil.rank + ' %d'*len(vis_shp)%vis_shp)
+        logger.debug('RANK %02d: ra  shape'%mpiutil.rank + ' %d'*len(ra_shp)%ra_shp)
+        logger.debug('RANK %02d: var shape'%mpiutil.rank + ' %d'*len(var_shp)%var_shp)
 
         time = ts['sec1970'][:]
-        dirty_map, cov_inv_block = make_dirtymap(vis, vis_mask, time, ra, dec, 
-                self.map_tmp, tblock_len, n_poly, self.params['interpolation'])
+        if vis.dtype == np.complex:
+            vis = np.abs(vis)
 
-        self.df['dirty_map' ][idx + (slice(None), )]  = dirty_map
+        ra_axis  = self.map_tmp.get_axis('ra')
+        dec_axis = self.map_tmp.get_axis('dec')
 
-        if self.params['save_cov']:
-            self.df['cov_inv'][idx + (slice(None), )] = cov_inv_block
+        gslice = self.map_global_slice
+        lslice = self.map_local_slice
+        ra_block_len = self.params['ra_block_len']
+        for ii, (_gslice, _lslice) in enumerate(zip(gslice, lslice)):
 
-        clean_map, noise_diag = make_cleanmap(dirty_map, cov_inv_block)
+            _dm, _ci = timestream2map(vis, vis_mask, vis_var, time, ra, dec, 
+                    ra_axis[_lslice], dec_axis, beam_size=self.params['beam_fwhm'],
+                    beam_cut = self.params['beam_cut'])
 
-        self.df['clean_map' ][idx + (slice(None), )] = clean_map
-        self.df['noise_diag'][idx + (slice(None), )] = noise_diag
+            ra_olp_st = _gslice.start - _lslice.start
+            ra_olp_ed = ra_olp_st + ra_block_len
+            _mslice = (slice(ra_olp_st, ra_olp_ed), slice(None))
+            _gslice = (_gslice, slice(None))
+            _lslice = (_lslice, slice(None))
 
-        del cov_inv_block, dirty_map, clean_map, noise_diag
-        gc.collect()
+            self.df['dirty_map' ][map_idx + _gslice] += _dm[_mslice]
+            self.df['cov_inv'][map_idx + _gslice + _lslice]\
+                    += _ci[_mslice + (slice(None), slice(None))]
+
+            del _ci, _dm
+            gc.collect()
 
     def finish(self):
+
         if mpiutil.rank0:
             print 'Finishing MapMaking.'
 
         mpiutil.barrier()
 
-#def make_dirtymap(vis, vis_mask, ts, map_tmp, tblock_len, n_poly=1, 
-def make_dirtymap(vis, vis_mask, time, ra, dec, map_tmp, tblock_len, n_poly=1, 
-        interpolation = 'linear'):
+def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, ra_axis, dec_axis, 
+        beam_size=3./60.,  beam_cut = 0.01):
 
-    dirty_map = al.zeros_like(map_tmp)
-    cov_inv = np.zeros(map_tmp.shape * 2, dtype=float)
+    map_shp = ra_axis.shape + dec_axis.shape
 
-    n_time = vis.shape[0]
-    n_extr = vis.shape[1]
-    if tblock_len is None:
-        tblock_len = n_time
+    cov_inv_block = np.zeros((np.product(map_shp), np.product(map_shp)),)
+    beam_sig = beam_size  / (2. * np.sqrt(2.*np.log(2.)))
 
-    for st in range(0, n_time, tblock_len):
-        et = st + tblock_len
-        _time = time[st:et] #ts['sec1970'][st:et]
-        #_ra   = ts['ra'][st:et, 0]
-        #_dec  = ts['dec'][st:et, 0]
-        for ii in range(n_extr):
-            _ra   = ra[st:et, ii]  #ts['ra'][st:et, 0]
-            _dec  = dec[st:et, ii] #ts['dec'][st:et, 0]
-            _vis  = vis[st:et, ii]
-            _vis_mask = vis_mask[st:et, ii]
-            if _vis.dtype == np.complex:
-                _vis = np.abs(_vis)
-            _dm, _ci = timestream2map(_vis, _vis_mask, _time, _ra, _dec, 
-                                      map_tmp, n_poly, interpolation)
-            dirty_map += _dm
-            cov_inv   += _ci
+    vis_mask = (vis_mask.copy()).astype('bool')
+    vis_one = np.array(vis_one)
+    vis_one[vis_mask] = 0.
+    
+    _good  = ( ra  < max(ra_axis))
+    _good *= ( ra  > min(ra_axis))
+    _good *= ( dec < max(dec_axis))
+    _good *= ( dec > min(dec_axis))
+    _good *= ~vis_mask
+    if np.sum(_good) < 5: 
+        #print 'bad block < 5'
+        cov_inv_block.shape = map_shp * 2
+        return np.zeros(map_shp), cov_inv_block
 
-            del _ci, _dm
-            gc.collect()
+    ra   = ra[_good] * np.pi / 180.
+    dec  = dec[_good]* np.pi / 180.
+    vis_one  = vis_one[_good]
+    vis_mask = vis_mask[_good]
+    time = time[_good]
+    vis_var = vis_var[_good]
 
-    return dirty_map, cov_inv
+    ra_centr  = ra_axis  * np.pi / 180.
+    dec_centr = dec_axis * np.pi / 180.
 
-def timestream2map(vis_one, vis_mask, time, ra, dec, map_tmp, n_poly = 1, 
+    P = (np.sin(ra[:, None]) * np.sin(ra_centr[None, :]))[:, :, None]\
+      + (np.cos(ra[:, None]) * np.cos(ra_centr[None, :]))[:, :, None]\
+      * (np.cos(dec[:, None] - dec_centr[None, :]))[:, None, :]
+
+    P = np.arccos(P) * 180. / np.pi
+    P = np.exp(- 0.5 * (P / beam_sig) ** 2)
+
+    P.shape = (ra.shape[0], -1)
+    if beam_cut is None:
+        P_max = np.argmax(P, axis=1)
+        P *= 0.
+        P[tuple(range(ra.shape[0])), tuple(P_max)] = 1.
+    else:
+        logger.debug('beam cut %f'%beam_cut)
+        P[P<beam_cut] = 0.
+        P /= np.sum(P, axis=1)[:, None]
+
+
+    vis_var[vis_var==0] = np.inf #T_infinity ** 2.
+    noise_inv_weight = 1./vis_var
+
+    weight = noise_inv_weight
+
+    dirty_map = np.dot(P.T, vis_one * weight)
+    dirty_map.shape = map_shp
+
+    weight = np.eye(vis_one.shape[0]) * weight
+    cov_inv_block += np.dot(np.dot(P.T, weight) , P)
+    cov_inv_block.shape = map_shp * 2
+
+    return dirty_map, cov_inv_block
+
+def timestream2map_GBT(vis_one, vis_mask, time, ra, dec, map_tmp, n_poly = 1, 
         interpolation = 'linear'):
 
     vis_mask = (vis_mask.copy()).astype('bool')
@@ -327,7 +421,7 @@ def timestream2map(vis_one, vis_mask, time, ra, dec, map_tmp, n_poly = 1,
     vis_one = np.array(vis_one)
     vis_one[vis_mask] = 0.
 
-    cov_inv_block = np.zeros(map_tmp.shape * 2, dtype=float)
+    cov_inv_block = np.zeros(map_tmp.shape * 2)
     
     polys = ortho_poly(time, n_poly, ~vis_mask, 0)
     amps = np.sum(polys * vis_one[None, :], -1)
@@ -377,11 +471,13 @@ def timestream2map(vis_one, vis_mask, time, ra, dec, map_tmp, n_poly = 1,
 
     return dirty_map, cov_inv_block
 
-def make_cleanmap(dirty_map, cov_inv_block, threshold=1.e-1):
+
+def make_cleanmap_GBT(dirty_map, cov_inv_block, threshold=1.e-5):
     
     map_shp = dirty_map.shape
     dirty_map.shape = (np.prod(map_shp), )
     cov_inv_block.shape = (np.prod(map_shp), np.prod(map_shp))
+    #cov_inv_block += np.eye(np.prod(map_shp)) * 1.e-1
     cov_inv_diag, Rot = linalg.eigh(cov_inv_block, overwrite_a=True)
     map_rotated = sp.dot(Rot.T, dirty_map)
     bad_modes = cov_inv_diag <= threshold * cov_inv_diag.max()
@@ -452,6 +548,7 @@ class MakeMap_CombineAll(DirtyMap_GBT):
         dirty_map_tmp.set_axis_info('freq', freq_c, freq_d)
         dirty_map_tmp.set_axis_info('ra',   field_centre[0], self.ra_spacing)
         dirty_map_tmp.set_axis_info('dec',  field_centre[1], self.dec_spacing)
+        self.map_axis_names = axis_names
         #self.map_tmp = map_tmp
 
         self.create_dataset_like('dirty_map',  dirty_map_tmp)
@@ -460,21 +557,52 @@ class MakeMap_CombineAll(DirtyMap_GBT):
 
         self.df['mask'] = np.zeros(n_freq)
 
-        if self.params['save_cov']:
-            axis_names = ('freq', 'ra', 'dec', 'ra', 'dec')
-            cov_tmp = np.zeros((n_freq, ) +  self.map_shp + self.map_shp)
-            cov_tmp = al.make_vect(cov_tmp, axis_names=axis_names)
-            cov_tmp.set_axis_info('freq', freq_c, freq_d)
-            cov_tmp.set_axis_info('ra',   field_centre[0], self.ra_spacing)
-            cov_tmp.set_axis_info('dec',  field_centre[1], self.dec_spacing)
-            self.create_dataset_like('cov_inv', cov_tmp)
+        #if self.params['save_cov']:
+        axis_names = ('freq', 'ra', 'dec', 'ra', 'dec')
+        cov_tmp = np.zeros((n_freq, ) +  self.map_shp + self.map_shp)
+        cov_tmp = al.make_vect(cov_tmp, axis_names=axis_names)
+        cov_tmp.set_axis_info('freq', freq_c, freq_d)
+        cov_tmp.set_axis_info('ra',   field_centre[0], self.ra_spacing)
+        cov_tmp.set_axis_info('dec',  field_centre[1], self.dec_spacing)
+        self.create_dataset_like('cov_inv', cov_tmp)
 
         self.df['pol'] = self.pol
         self.df['bl']  = self.bl
 
-        func = ts.freq_data_operate
+        func = ts.freq_pol_and_bl_data_operate
 
         return func
+
+
+def sub_ortho_poly(vis, time, mask, n):
+    
+    window = mask
+    x = time
+    
+    upbroad = (slice(None), slice(None)) + (None, ) * (window.ndim - 1)
+    window = window[None, ...]
+    
+    x_mid = (x.max() + x.min())/2.
+    x_range = (x.max() - x.min()) /2.
+    x = (x - x_mid) / x_range
+    
+    n = np.arange(n)[:, None]
+    x = x[None, :]
+    polys = special.eval_legendre(n, x, out=None)
+    polys = polys[upbroad] * window
+
+    for ii in range(n.shape[0]):
+        for jj in range(ii):
+            amp = np.sum(polys[ii, ...] * polys[jj, ...], axis=0)
+            polys[ii, ...] -= amp[None, ...] * polys[jj, ...]
+            
+        norm  = np.sqrt(np.sum(polys[ii] ** 2, axis=0))
+        polys[ii] /= norm[None, ...]
+    
+    amp = np.sum(polys * vis[None, ...], 1)
+    vis_fit = np.sum(amp[:, None, ...] * polys, 0)
+    vis -= vis_fit
+    #return vis
 
 def ortho_poly(x, n, window=1., axis=-1):
     """Generate orthonormal basis polynomials.
@@ -515,7 +643,7 @@ def ortho_poly(x, n, window=1., axis=-1):
     # The following is the only way I know how to get the broadcast shape of
     # x and window.
     # Turns out I could use np.broadcast here.  Fix this later.
-    #print x.shape, window.shape
+    print x.shape, window.shape
     shape = np.broadcast(x, window).shape
     m = shape[axis]
     # Construct a slice tuple for up broadcasting arrays.
