@@ -4,11 +4,17 @@ import healpy as hp
 import h5py
 
 from caput import mpiutil
+from fpipe.map import algebra as al
 
 
 class MapBase(object):
 
     df = None
+
+    def __init__(self, *args, **kwargs):
+
+        self.df = None
+        super(MapBase, self).__init__()
 
     def __del__(self):
 
@@ -31,16 +37,21 @@ class MapBase(object):
 
 class MultiMapBase(object):
 
-    df_out = []
-    df_in  = []
+    def __init__(self):
+        
+        self.df_in  = []
+        self.df_out = []
+        super(MultiMapBase, self).__init__()
 
     def __del__(self):
 
         for df in self.df_out:
             df.close()
+            self.df_out.remove(df)
 
         for df in self.df_in:
             df.close()
+            self.df_in.remove(df)
 
     def open(self, fname, mode='r'):
 
