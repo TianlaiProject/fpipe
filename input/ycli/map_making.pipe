@@ -61,4 +61,3 @@ cmAll_output_files = ['maps_%s/cm%s_SDSS_N_%s_arcdrift_%s_vis.h5'%(prefix,  map_
 cmAll_threshold = 1.e-15
 cmAll_block_overlap = 20
 cmAll_block_length = 100
-
