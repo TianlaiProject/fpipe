@@ -1,6 +1,6 @@
 import numpy as np
 import gc
-from tlpipe.timestream import timestream_task
+from fpipe.timestream import timestream_task
 import h5py
 from astropy.time import Time
 from tlpipe.utils.path_util import output_path
@@ -11,9 +11,94 @@ from scipy.signal import lombscargle
 from scipy.ndimage import gaussian_filter1d
 from scipy import interpolate
 
+import matplotlib.pyplot as plt
+
+
+class Normal_Tsys(timestream_task.TimestreamTask):
+
+    params_init = {
+            'T_sys' : 20. ,
+            'timevars_poly' : 6,
+            'noise_on_time': 1,
+            'sub_mean' : True,
+            }
+
+    prefix = 'tsyscal_'
+
+    def process(self, ts):
+
+        show_progress = self.params['show_progress']
+        progress_step = self.params['progress_step']
+
+
+        func = ts.bl_data_operate
+        func(self.cal_tsys, full_data=True, copy_data=False, 
+                show_progress=show_progress, 
+                progress_step=progress_step, keep_dist_axis=False)
+
+        return super(Normal_Tsys, self).process(ts)
+
+    def cal_tsys(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        poly_order  = self.params['timevars_poly']
+        on_t = self.params['noise_on_time']
+        if 'ns_on' in ts.iterkeys():
+            print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+            if len(ts['ns_on'].shape) == 2:
+                on = ts['ns_on'][:, gi].astype('bool')
+            else:
+                on = ts['ns_on'][:]
+        else:
+            print "No Noise Diode Mask info"
+            on = np.zeros(vis.shape[0]).astype('bool')
+
+        vis1 = vis.copy()
+        vis1 = np.ma.array(vis1)
+        vis1.mask  = vis_mask.copy()
+        vis1[vis1==0] = np.ma.masked
+
+        T_sys = self.params['T_sys']
+        print "Norm. T_sys to %f K"%T_sys
+        vis /= np.ma.median(vis1[~on, ...], axis=(0, 1))[None, None, :]
+        vis *= T_sys
+        if self.params['sub_mean']:
+            vis -= T_sys
+
+        vis1.mask[~on, ...] = True
+        vis1.mask[on, ...] = False
+
+        vis1, on = get_Ncal(vis1, vis_mask, on, on_t)
+        bandpass = np.ma.median(vis1, axis=0)
+        # smooth the bandpass to remove some RFI
+        bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=51)
+        bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=51)
+        bandpass = np.ma.filled(bandpass, 0)
+        bandpass[bandpass==0] = np.inf
+
+        time  = ts['sec1970'][:]
+        time -= time[0]
+        time /= time.max()
+        time_on = time[on]
+        #vis1 /= np.ma.median(vis1, axis=(0,1))[None, None, :]
+        vis1 /= bandpass[None, ...]
+        vis1[vis1 == 0.] = np.ma.masked
+        vis1 = np.ma.median(vis1, axis=1)
+        good = ~vis1.mask
+        vis1_poly_xx = np.poly1d(np.polyfit(time_on[good[:,0]], 
+                                            vis1[:, 0][good[:,0]],
+                                            poly_order))
+        vis1_poly_yy = np.poly1d(np.polyfit(time_on[good[:,1]], 
+                                            vis1[:, 1][good[:,1]], 
+                                            poly_order))
+
+        vis[..., 0] /= vis1_poly_xx(time)[:, None]
+        vis[..., 1] /= vis1_poly_yy(time)[:, None]
+
+        del vis1
+
+
 class Bandpass_Cal(timestream_task.TimestreamTask):
     """
-    Edit the Tod data observed by MeerKAT for 1/f noise analysis
     """
 
     params_init = {
@@ -22,6 +107,7 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
             'timevars_poly' : 4,
             'Tnoise_file'   : None,
             'T_sys' : None,
+            'plot_spec' : False,
             }
 
     prefix = 'bpcal_'
@@ -45,6 +131,7 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
         kernel_size = self.params['bandpass_smooth']
         poly_order  = self.params['timevars_poly']
         Tnoise_file = self.params['Tnoise_file']
+        plot_spec   = self.params['plot_spec']
         if Tnoise_file is not None:
             with h5py.File(Tnoise_file, 'r') as f:
                 Tnoise_xx = f['Tnoise'][:, 0, bl[0] - 1]
@@ -79,14 +166,44 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
 
         # take the median value of each channel as the bandpass
         bandpass = np.ma.median(vis1, axis=0)
+        if plot_spec:
+            fig = plt.figure(figsize=(12, 4))
+            ax  = fig.add_axes([0.06, 0.1, 0.90, 0.8])
+            ax.plot(ts['freq'][:], bandpass[:, 0], 'r', label='bandpass X')
+            ax.plot(ts['freq'][:], bandpass[:, 1], 'b', label='bandpass Y')
+
         # smooth the bandpass to remove some RFI
-        #bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=kernel_size)
-        #bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=kernel_size)
-        #bandpass[bandpass.mask] = 0.
+        bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=kernel_size)
+        bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=kernel_size)
+
+        if plot_spec:
+            ax.plot(ts['freq'][:], bandpass[:, 0], 'w')
+            ax.plot(ts['freq'][:], bandpass[:, 1], 'w')
+            ax.set_ylim(ymin=0, ymax=25)
+            ax.set_xlim(xmin=ts['freq'][:].min(),xmax=ts['freq'][:].max())
+
         bandpass = np.ma.filled(bandpass, 0)
         bandpass[bandpass==0] = np.inf
 
         vis /= bandpass[None, ...]
+
+        if plot_spec:
+            fig = plt.figure(figsize=(12, 4))
+            ax  = fig.add_axes([0.06, 0.1, 0.90, 0.8])
+            ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 0], 'r')
+            ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 1], 'b')
+
+        #vis2 = np.ma.array(vis.copy())
+        #vis2.mask = vis_mask.copy()
+        #vis2.mask[on, ...] = True
+        #norm  = np.median(vis2, axis=0)
+        #norm /= medfilt(norm, [15, 1])
+
+        #vis /= norm
+
+        #if plot_spec:
+        #    ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 0], 'k')
+        #    ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 1], '0.5')
 
         # get the time var
         time  = ts['sec1970'][:]
@@ -106,11 +223,16 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
         #vis[..., 0] /= vis1_poly_xx(time)[:, None]
         #vis[..., 1] /= vis1_poly_yy(time)[:, None]
 
-        vis = np.ma.masked_equal(vis, 0)
 
         if Tnoise_file is not None:
             vis[..., 0] *= Tnoise_xx[None, :]
             vis[..., 1] *= Tnoise_yy[None, :]
+
+        if plot_spec:
+            ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 0], 'm')
+            ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 1], 'g')
+            ax.set_xlim(xmin=ts['freq'][:].min(),xmax=ts['freq'][:].max())
+            ax.set_ylim(ymin=15, ymax=25)
 
         if self.params['T_sys'] is not None:
             T_sys = self.params['T_sys']

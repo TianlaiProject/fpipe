@@ -1,63 +1,67 @@
 # -*- mode: python; -*-
 #
 
-import os
+from meerKAT_sim.map import dirtymap, cleanmap
 
-from fpipe.map import dirtymap, cleanmap
-
-data_base = '/idia/users/ycli/'
+data_base = '/scratch/users/ycli/fanalysis/'
 DATA_Key = '0531'
 if DATA_Key == '0531':
     file_temp = 'SDSS_N_2.5/20190531/SDSS_N_2.5_arcdrift%04d-%04d.h5'
     file_st = 3
-    file_ed = 3 # max 24
+    file_ed = 4 # max 24
     FILE_LIST = [file_temp%(i, i) for i in range(file_st, file_ed + 1)]
 
 pipe_tasks = []
-pipe_outdir = data_base + 'fdata/'
-pipe_logging = 'debug'
+pipe_outdir = data_base 
+#pipe_logging = 'error'
+pipe_logging = 'info'
 pipe_copy = False
 
-
-interpolation = 'linear' #'nearest' 'cubic'
-
-input_files = FILE_LIST
-
-prefix = 'f300-f2348/bpcal_bpcal5_Tsys20/'
-map_prefix = '_test'
-
 pipe_tasks.append((dirtymap.MakeMap_CombineAll, 'dmall_'))
-pipe_tasks.append((cleanmap.CleanMap_SplitRA,   'cmAll_'))
+pipe_tasks.append((cleanmap.CleanMap, 'cmAll_'))
 
-dmall_field_centre = (152.425, 26.675) # 0531
-#dmall_map_shape = [200, 25] # 0531
-dmall_map_shape = [601, 41]
+map_name = 'May31_0003-0004'
+#fslice = '_200-2248'
+fslice = '_5000-7048'
+#input_files = [ 'sumthreshold_flagging%s/%s'%(fslice, f) for f in FILE_LIST]
+input_files = [ 'tsys_cal%s/%s'%(fslice, f) for f in FILE_LIST]
+#input_files = [ 'sumthreshold_flagging_5000-7048/%s'%f for f in FILE_LIST]
 
-#dmall_field_centre = (134.6, 25.9) # all others
-#dmall_map_shape = [200, 40] # all others
+#suffix = ''
+#suffix = '_noweight'
+#suffix = '_beamcut'
+#suffix = '_noweight_beamcut'
+suffix = '_bc0.6_tsysnorm_small'
+
+#dmall_field_centre = (152.5, 26.68)
+#dmall_map_shape = [600, 35]
+
+dmall_field_centre = (156, 26.67)
+#dmall_map_shape = [800, 34]
+dmall_map_shape = [400, 34]
+#dmall_map_shape = [400, 28]
 
 dmall_pixel_spacing = 3./60./4.
 
-dmall_interpolation = interpolation
-dmall_tblock_len = 200
-dmall_input_files  = ['%s/%s'%(prefix, f) for f in input_files]
-dmall_output_files = ['maps_%s/dm%s_SDSS_N_%s_arcdrift_%s'%(prefix, map_prefix, 
-                                                            DATA_Key, interpolation),]
+dmall_tblock_len = 256 #1280
+dmall_input_files  = input_files
+dmall_output_files = ['map%s/dm_%s%s'%(fslice, map_name, suffix),]
+#dmall_output_files = ['map_5000-7048/dm_%s%s'%(map_name, suffix),]
 dmall_data_sets    = 'vis'
 dmall_freq_select  = (0, None)
 dmall_pol_select   = (0, 2)
-dmall_deweight_time_slope = False # True
+dmall_noise_weight = True
 dmall_deweight_time_mean = True
 dmall_save_cov = True
-dmall_beam_size = 3./60.
-dmall_beam_cut  = 0.96
-dmall_ra_block_olp = 20
+dmall_beam_fwhm_at21cm = 2.94/60.
+dmall_beam_cut  = 0.6 #None #0.6
+dmall_save_localHI = True
 
 
-cmAll_input_files = ['maps_%s/dm%s_SDSS_N_%s_arcdrift_%s_vis.h5'%(prefix, map_prefix,
-                                                            DATA_Key, interpolation),]
-cmAll_output_files = ['maps_%s/cm%s_SDSS_N_%s_arcdrift_%s_vis.h5'%(prefix,  map_prefix,
-                                                            DATA_Key, interpolation),]
-cmAll_threshold = 1.e-15
-cmAll_block_overlap = 20
-cmAll_block_length = 100
+suffix += '_vis'
+cmAll_input_files  = ['map%s/dm_%s%s.h5'%(fslice, map_name, suffix),]
+cmAll_output_files = ['map%s/cm_%s%s.h5'%(fslice, map_name, suffix),]
+#cmAll_input_files  = ['map_5000-7048/dm_%s%s.h5'%(map_name, suffix),]
+#cmAll_output_files = ['map_5000-7048/cm_%s%s.h5'%(map_name, suffix),]
+#cmAll_threshold = 1.e-15
+cmAll_threshold = 0.1

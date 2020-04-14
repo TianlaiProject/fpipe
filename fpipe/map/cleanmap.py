@@ -10,27 +10,23 @@ from tlpipe.utils.path_util import output_path
 
 from fpipe.timestream import timestream_task
 from fpipe.map import algebra as al
-from fpipe.map.pointing import Pointing
-from fpipe.map.noise_model import Noise
 from fpipe.map import mapbase
-from fpipe.map import dirtymap
 
 import healpy as hp
 import numpy as np
 import scipy as sp
 #from scipy import linalg
 from numpy import linalg
-from scipy import special
-from scipy.ndimage import gaussian_filter
 import h5py
 import sys
 import gc
 
 logger = logging.getLogger(__name__)
 
-from constants import T_infinity, T_huge, T_large, T_medium, T_small, T_sys
-from constants import f_medium, f_large
+from meerKAT_utils.constants import T_infinity, T_huge, T_large, T_medium, T_small, T_sys
+from meerKAT_utils.constants import f_medium, f_large
 
+__dtype__ = 'float32'
 
 class CleanMap_SplitRA(OneAndOne, mapbase.MultiMapBase):
 
@@ -137,7 +133,7 @@ class CleanMap_SplitRA(OneAndOne, mapbase.MultiMapBase):
         mpiutil.barrier()
         super(CleanMap_SplitRA, self).finish()
 
-class CleanMap_GBT(OneAndOne, mapbase.MultiMapBase):
+class CleanMap(OneAndOne, mapbase.MultiMapBase):
 
     params_init = {
 
@@ -149,18 +145,19 @@ class CleanMap_GBT(OneAndOne, mapbase.MultiMapBase):
 
     def __init__(self, *args, **kwargs):
 
-        super(CleanMap_GBT, self).__init__(*args, **kwargs)
+        super(CleanMap, self).__init__(*args, **kwargs)
         mapbase.MultiMapBase.__init__(self)
 
     def read_input(self):
 
         for input_file in self.input_files:
 
-            print input_file
+            if mpiutil.rank0:
+                logger.info('%s'%input_file)
             self.open(input_file)
 
-
-        self.map_tmp = al.make_vect(al.load_h5(self.df_in[0], 'dirty_map'))
+        map_tmp = al.load_h5(self.df_in[0], 'dirty_map')
+        self.map_tmp = al.make_vect(map_tmp, axis_names = map_tmp.info['axes'])
         self.map_shp = self.map_tmp.shape
         for output_file in self.output_files:
             output_file = output_path(output_file, 
@@ -168,6 +165,7 @@ class CleanMap_GBT(OneAndOne, mapbase.MultiMapBase):
             self.allocate_output(output_file, 'w')
             self.create_dataset_like(-1, 'clean_map',  self.map_tmp)
             self.create_dataset_like(-1, 'noise_diag', self.map_tmp)
+            self.create_dataset_like(-1, 'dirty_map',  self.map_tmp)
 
         return 1
 
@@ -187,17 +185,24 @@ class CleanMap_GBT(OneAndOne, mapbase.MultiMapBase):
 
 
             indx = _indx_f(task_ind, self.map_shp[:-2])
+            #print mpiutil.rank,  indx
+            print "RANK%03d: ("%mpiutil.rank + ("%04d, "*len(indx))%indx + ")"
 
             map_shp = self.map_shp[-2:]
-            _dirty_map = np.zeros(map_shp)
-            _cov_inv = np.zeros(map_shp * 2, dtype=float)
-            for df in self.df_in:
+            _dirty_map = np.zeros(map_shp, dtype=__dtype__)
+            _cov_inv = np.zeros(map_shp * 2, dtype=__dtype__)
+            for ii, df in enumerate(self.df_in):
                 _dirty_map += df['dirty_map'][indx + (slice(None), )]
-                _cov_inv   += df['cov_inv'][indx + (slice(None), )]
+                self.read_block_from_dset(ii, 'cov_inv', indx, _cov_inv)
 
+                #_cov_inv   += df['cov_inv'][indx + (slice(None), )]
+
+            self.df_out[-1]['dirty_map' ][indx + (slice(None), )] = _dirty_map
             clean_map, noise_diag = make_cleanmap(_dirty_map, _cov_inv, threshold)
             self.df_out[-1]['clean_map' ][indx + (slice(None), )] = clean_map
             self.df_out[-1]['noise_diag'][indx + (slice(None), )] = noise_diag
+            del _cov_inv
+            gc.collect()
 
         mpiutil.barrier()
 
@@ -207,13 +212,15 @@ class CleanMap_GBT(OneAndOne, mapbase.MultiMapBase):
 
 
         mpiutil.barrier()
-        super(CleanMap_GBT, self).finish()
+        super(CleanMap, self).finish()
 
 def make_cleanmap(dirty_map, cov_inv_block, threshold=1.e-5):
 
     map_shp = dirty_map.shape
     dirty_map.shape = (np.prod(map_shp), )
     cov_inv_block.shape = (np.prod(map_shp), np.prod(map_shp))
+
+    #cov_inv_block[cov_inv_block<1.e-5] = 0.
 
     #cov_inv_diag = np.diag(cov_inv_block).copy()
     #cov_inv_bad = cov_inv_diag == 0
@@ -223,13 +230,32 @@ def make_cleanmap(dirty_map, cov_inv_block, threshold=1.e-5):
     #cov_inv_block += np.eye(np.prod(map_shp)) * cov_inv_diag
     #noise = linalg.inv(cov_inv_block)
 
-    cov_inv_block += np.eye(np.prod(map_shp)) * 10.
-    noise = linalg.pinv(cov_inv_block, rcond=threshold)
+    cov_inv_diag = np.diag(cov_inv_block).copy()
+    cov_inv_bad = cov_inv_diag == 0
+    cov_inv_diag_max = cov_inv_diag.max()
+    if np.all(cov_inv_diag == 0):
+        logger.error('Singular Noise Matrix, ignore')
+        noise = np.zeros_like(cov_inv_block)
+    else:
+        cov_inv_diag_min = cov_inv_diag[cov_inv_diag!=0].min()
+        logger.info('cov inv diag max %e, min %e'%(cov_inv_diag_max, cov_inv_diag_min))
+        #cov_inv_diag[cov_inv_diag!=0] = cov_inv_diag_max * 0.1
+        #cov_inv_diag[:] = cov_inv_diag_max * threshold
+        cov_inv_diag[:] = threshold
+
+        cov_inv_block += np.eye(np.prod(map_shp)) * cov_inv_diag[:, None]
+        #noise = linalg.pinv(cov_inv_block, rcond=threshold)
+        noise = linalg.inv(cov_inv_block)
+        noise[cov_inv_bad] = 0.
+
     clean_map = np.dot(noise, dirty_map)
     noise_diag = np.diag(noise)
 
     clean_map.shape = map_shp
     noise_diag.shape = map_shp
+
+    del noise
+    gc.collect()
 
     return clean_map, noise_diag
 

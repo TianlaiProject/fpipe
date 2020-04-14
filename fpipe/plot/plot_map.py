@@ -4,6 +4,8 @@ from fpipe.map import algebra as al
 #from tlpipe.powerspectrum import fgrm
 from fpipe.plot import plot_waterfall
 
+import logging
+
 import h5py as h5
 import numpy as np
 import scipy as sp
@@ -12,15 +14,20 @@ import copy
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+import matplotlib.patheffects as PathEffects
 
 from scipy.ndimage.filters import gaussian_filter as gf
+from scipy.signal import convolve2d
 
+from astropy.coordinates import SkyCoord
+import astropy.units as u
 
 import healpy as hp
 
-_c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-           "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
+logger = logging.getLogger(__name__)
 
+_c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                  "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
 def load_maps_npy(dm_path, dm_file):
 
     #with h5.File(dm_path+dm_file, 'r') as f:
@@ -43,10 +50,7 @@ def load_maps(dm_path, dm_file, name='clean_map'):
         print f.keys()
         imap = al.load_h5(f, name)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
-        #imap = al.make_vect(imap)
-        #imap.info['axes'] = ('freq', 'ra', 'dec')
-        print imap.info
-        print imap.dtype
+        #imap = al.make_vect(al.load_h5(f, name))
         
         freq= imap.get_axis('freq')
         #print freq[1] - freq[0]
@@ -64,27 +68,192 @@ def load_maps(dm_path, dm_file, name='clean_map'):
 
     return imap, ra, dec, ra_edges, dec_edges, freq, mask
 
+def smooth_map(imap, pix, freq):
+
+    _lambda = 2.99e8 / (freq * 1.e6)
+    _fwhm = 1.22 *  _lambda / 300. / np.pi * 180. * 60.
+    #_fwhm = 3. * np.ones(freq.shape)
+    _sig = _fwhm/(8. * np.log(2.))**0.5 / pix
+    for i in range(imap.shape[0]):
+        #print _fwhm[i], _sig[i]
+        kernel_n = 3. * int(_sig[i])
+        kernel =  np.arange(-kernel_n, kernel_n+1)
+        kernel = np.exp( - 0.5 * kernel ** 2 / _sig[i] ** 2 )
+        kernel = kernel[:, None] * kernel[None, :]
+        kernel /= np.sum(kernel)
+        imap[i, ...] = convolve2d(imap[i, ...], kernel, mode='same')
+
+def show_map(map_path, map_type, indx = (), figsize=(10, 4),
+            xlim=None, ylim=None, logscale=False,
+            vmin=None, vmax=None, sigma=2., inv=False, mK=True,
+            title='', c_label=None, factorize=False, 
+            nvss_path = None, smoothing=False):
+
+    with h5.File(map_path, 'r') as f:
+        keys = tuple(f.keys())
+        logger.info( ('%s '* len(keys))%keys )
+        imap = al.load_h5(f, map_type)
+        imap = al.make_vect(imap, axis_names = imap.info['axes'])
+        print imap.info
+        
+        freq = imap.get_axis('freq')
+        ra   = imap.get_axis( 'ra')
+        dec  = imap.get_axis('dec')
+        ra_edges  = imap.get_axis_edges( 'ra')
+        dec_edges = imap.get_axis_edges('dec')
+        try:
+            mask = f['mask'][:]
+        except KeyError:
+            mask = None
+
+    if map_type == 'noise_diag' and factorize:
+        imap = fgrm.make_noise_factorizable(imap)
+
+    imap = imap[indx]
+    freq = freq[indx[-1]]
+
+    if mK: 
+        if map_type == 'noise_diag':
+            imap = imap * 1.e6
+            unit = r'$[\rm mK]^2$'
+        else:
+            imap = imap * 1.e3
+            unit = r'$[\rm mK]$'
+    else:
+        if map_type == 'noise_diag':
+            unit = r'$[\rm K]^2$'
+        else:
+            unit = r'$[\rm K]$'
+
+    if xlim is None:
+        xlim = [ra_edges.min(), ra_edges.max()]
+    if ylim is None:
+        ylim = [dec_edges.min(), dec_edges.max()]
+
+    imap[np.abs(imap) < imap.max() * 1.e-4] = 0.
+    imap = np.ma.masked_equal(imap, 0)
+    imap = np.ma.masked_invalid(imap)
+    #imap -= np.ma.mean(imap)
+
+    if smoothing:
+        imap = imap[None, ...]
+        _pix = np.abs(dec[1] - dec[0]) * 60.
+        smooth_map(imap, _pix, freq[None])
+        imap = imap[0]
+    
+    if logscale:
+        imap = np.ma.masked_less(imap, 0)
+        if vmin is None: vmin = np.ma.min(imap)
+        if vmax is None: vmax = np.ma.max(imap)
+        norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        if sigma is not None:
+            if vmin is None: vmin = np.ma.mean(imap) - sigma * np.ma.std(imap)
+            if vmax is None: vmax = np.ma.mean(imap) + sigma * np.ma.std(imap)
+        else:
+            if vmin is None: vmin = np.ma.min(imap)
+            if vmax is None: vmax = np.ma.max(imap)
+            #if vmax is None: vmax = np.ma.median(imap)
+ 
+        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    
+    
+    fig = plt.figure(figsize=figsize)
+    l = 0.07 * 10. / figsize[0]
+    b = 0.10 *  4  / figsize[1]
+    w = 1 - 0.30 * 10  / figsize[0]
+    h = 1 - 0.20 *  4  / figsize[1]
+    ax = fig.add_axes([l, b, w, h])
+    l = 1 - 0.22 * 10. / figsize[0]
+    b = 0.20 *  4  / figsize[1]
+    w = 1 - 0.21 * 10  / figsize[0] - l
+    h = 1 - 0.40 *  4  / figsize[1]
+    cax = fig.add_axes([l, b, w, h])
+    ax.set_aspect('equal')
+
+    #imap = np.sum(imap, axis=1)
+    
+    #imap = np.array(imap)
+    
+    cm = ax.pcolormesh(ra_edges, dec_edges, imap.T, norm=norm)
+    ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$'%freq)
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_xlabel(r'${\rm RA}\,[^\circ]$')
+    ax.set_ylabel(r'${\rm Dec}\,[^\circ]$')
+
+    nvss_range = [ [ra_edges.min(), ra_edges.max(), 
+                    dec_edges.min(), dec_edges.max()],]
+    if nvss_path is not None:
+        nvss_cat = plot_waterfall.get_nvss_radec(nvss_path, nvss_range)
+        nvss_sel = nvss_cat['FLUX_20_CM'] > 10.
+        nvss_ra  = nvss_cat['RA'][nvss_sel]
+        nvss_dec = nvss_cat['DEC'][nvss_sel]
+        ax.plot(nvss_ra, nvss_dec, 'ko', mec='k', mfc='none', ms=8, mew=1.5)
+
+        _sel = nvss_cat['FLUX_20_CM'] > 50.
+        _id  = nvss_cat['NAME'][_sel]
+        _ra  = nvss_cat['RA'][_sel]
+        _dec = nvss_cat['DEC'][_sel]
+        _flx =  nvss_cat['FLUX_20_CM'][_sel]
+        for i in range(np.sum(_sel)):
+            ra_idx = np.digitize(_ra[i], ra_edges) - 1
+            dec_idx = np.digitize(_dec[i], dec_edges) - 1
+            #ax.plot(ra[ra_idx], dec[dec_idx], 'wx', ms=10, mew=2)
+            _c = SkyCoord(_ra[i] * u.deg, _dec[i] * u.deg)
+            print '%s [RA,Dec]:'%_id[i] \
+                    + '[%7.4fd'%_c.ra.deg \
+                    + '(%dh%dm%6.4f) '%_c.ra.hms\
+                    + ': %7.4fd], FLUX %7.4f Jy'%(_c.dec.deg, _flx[i]/1000.)
+            _s = PathEffects.withStroke(linewidth=5, foreground='w', alpha=0.8)
+            _t = ax.annotate('%s\n[%7.4f Jy]'%(_id[i].replace('NVSS', ''), 
+                _flx[i]/1000.), (_ra[i], _dec[i]-0.01), 
+                textcoords='offset points', xytext = (20, -50),
+                arrowprops=dict(edgecolor='k',facecolor='k', arrowstyle='-|>', 
+                        linewidth=2, 
+                        connectionstyle="arc,angleA=180,armA=85,rad=20"),
+                size=10, #path_effects=[_s]
+                )
+            _t.arrow_patch.set_path_effects([_s])
+
+    if not logscale:
+        ticks = list(np.linspace(vmin, vmax, 5))
+        ticks_label = []
+        for x in ticks:
+            ticks_label.append(r"$%5.2f$"%x)
+        fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks)
+        cax.set_yticklabels(ticks_label)
+    else:
+        fig.colorbar(cm, ax=ax, cax=cax)
+    cax.minorticks_off()
+    if c_label is None:
+        c_label = r'$T\,$' + unit
+    cax.set_ylabel(c_label)
+
+    return xlim, ylim, (vmin, vmax)
+
+
 def plot_map(data, indx = (), figsize=(10, 4),
-            xlim=[None, None], ylim=[None, None], logscale=False,
+            xlim=None, ylim=None, logscale=False,
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
             smoothing=False, nvss_path=None, c_label=None, title=''):
-    
+
     #imap *= 1.e3
     #imap = data[0][indx + (slice(None),)]
-    if len(indx) == 1: indx = indx + (slice(None),)
+    #if len(indx) == 1: indx = indx + (slice(None),)
     imap = data[0][indx]
-    freq = data[5][indx[0]]
+    freq = data[5][indx[-1]]
     if mK:
         imap = imap * 1.e3
         unit = r'$[\rm mK]$'
     else:
         unit = r'$[\rm K]$'
         
-    #if inv:
-    #    #imap[imap==0] = np.inf
-    #    #imap = 1./ imap
-    #    #imap = fgrm.noise_diag_2_weight(data[0])[indx]
-    #    imap = fgrm.make_noise_factorizable(data[0], weight_prior=5.e-5)[indx]
+    if inv:
+        imap[imap==0] = np.inf
+        imap = 1./ imap
+        #imap = fgrm.noise_diag_2_weight(data[0])[indx]
+        #imap = fgrm.make_noise_factorizable(data[0], weight_prior=5.e-5)[indx]
 
 
         if mK:
@@ -94,15 +263,20 @@ def plot_map(data, indx = (), figsize=(10, 4),
             unit = r'$[\rm K^{-2}]$'
     ra_edges  = data[3]
     dec_edges = data[4]
+
+    if xlim is None:
+        xlim = [ra_edges.min(), ra_edges.max()]
+    if ylim is None:
+        ylim = [dec_edges.min(), dec_edges.max()]
     
     if smoothing:
         _sig = 0.8/(8. * np.log(2.))**0.5 / 0.4
-        print _sig
         imap = gf(imap, _sig)
         
     imap[np.abs(imap) < imap.max() * 1.e-10] = 0.
     imap = np.ma.masked_equal(imap, 0)
     imap = np.ma.masked_invalid(imap)
+    #imap -= np.ma.mean(imap)
     
     if logscale:
         imap = np.ma.masked_less(imap, 0)
@@ -123,17 +297,8 @@ def plot_map(data, indx = (), figsize=(10, 4),
     
     
     fig = plt.figure(figsize=figsize)
-    _fw, _fh = figsize
-    _l = 0.07 * 10. / _fw
-    _b = 0.10 * 6.  / _fh
-    _w = 1 - 0.30 * 10. / _fw
-    _h = 1 - 0.20 * 6.  / _fh
-    _cl = _l + _w + 0.01 * 10. / _fw
-    _cw = 0.02 * 10. / _fw
-    #ax = fig.add_axes([0.07, 0.10, 0.70, 0.8])
-    #cax = fig.add_axes([0.78, 0.2, 0.01, 0.6])
-    ax = fig.add_axes([_l, _b, _w, _h])
-    cax = fig.add_axes([_cl, _b, _cw, _h])
+    ax = fig.add_axes([0.07, 0.10, 0.70, 0.8])
+    cax = fig.add_axes([0.78, 0.2, 0.01, 0.6])
     ax.set_aspect('equal')
 
     #imap = np.sum(imap, axis=1)
@@ -150,12 +315,12 @@ def plot_map(data, indx = (), figsize=(10, 4),
     nvss_range = [ [ra_edges.min(), ra_edges.max(), dec_edges.min(), dec_edges.max()],]
     if nvss_path is not None:
         nvss_cat = plot_waterfall.get_nvss_radec(nvss_path, nvss_range)
-        nvss_sel = nvss_cat['FLUX_20_CM'] > 1.
+        nvss_sel = nvss_cat['FLUX_20_CM'] > 500.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
         ax.plot(nvss_ra, nvss_dec, 'ko', mec='k', mfc='w', ms=8, mew=1.5)
 
-        _sel = nvss_cat['FLUX_20_CM'] > 100.
+        _sel = nvss_cat['FLUX_20_CM'] > 1000.
         _id  = nvss_cat['NAME'][_sel]
         _ra  = nvss_cat['RA'][_sel]
         _dec = nvss_cat['DEC'][_sel]
@@ -163,8 +328,6 @@ def plot_map(data, indx = (), figsize=(10, 4),
         for i in range(np.sum(_sel)):
             print '%s [RA,Dec]: [%7.4f : %7.4f], FLUX %7.4f Jy'%(
                     _id[i], _ra[i], _dec[i], _flx[i]/1000.)
-    
-    ax.minorticks_on()
 
     if not logscale:
         ticks = list(np.linspace(vmin, vmax, 5))
@@ -179,6 +342,8 @@ def plot_map(data, indx = (), figsize=(10, 4),
     if c_label is None:
         c_label = r'$T\,$' + unit
     cax.set_ylabel(c_label)
+
+    return xlim, ylim, (vmin, vmax)
     
 def load_ps1d(ps_path, ps_file):
 

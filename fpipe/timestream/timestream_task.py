@@ -14,7 +14,7 @@ import h5py
 
 #from tlpipe.timestream import timestream_task
 from tlpipe.utils.path_util import input_path, output_path
-from tlpipe.pipeline.pipeline import OneAndOne
+from fpipe.pipeline.pipeline import OneAndOne
 
 from fpipe.container.timestream import FAST_Timestream
 from caput import mpiutil
