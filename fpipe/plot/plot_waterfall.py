@@ -64,6 +64,10 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
             }
     prefix = 'pkat_'
 
+    def __init__(self, parameter_file_or_dict=None, feedback=0):
+        super(PlotMeerKAT, self).__init__(parameter_file_or_dict, feedback)
+        self.feedback = feedback
+
     def process(self, ts):
 
         ts.main_data_name = self.params['main_data']
@@ -283,6 +287,10 @@ class PlotTimeStream(timestream_task.TimestreamTask):
             'nvss_cat' : None,
             }
     prefix = 'ptsbase_'
+
+    def __init__(self, parameter_file_or_dict=None, feedback=0):
+        super(PlotTimeStream, self).__init__(parameter_file_or_dict, feedback)
+        self.feedback = feedback
 
     def process(self, ts):
 
