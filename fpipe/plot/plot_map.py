@@ -87,7 +87,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             xlim=None, ylim=None, logscale=False,
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
             title='', c_label=None, factorize=False, 
-            nvss_path = None, smoothing=False):
+            nvss_path = None, smoothing=False, 
+            output_name=None):
 
     with h5.File(map_path, 'r') as f:
         keys = tuple(f.keys())
@@ -208,10 +209,10 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             _s = PathEffects.withStroke(linewidth=5, foreground='w', alpha=0.8)
             _t = ax.annotate('%s\n[%7.4f Jy]'%(_id[i].replace('NVSS', ''), 
                 _flx[i]/1000.), (_ra[i], _dec[i]-0.01), 
-                textcoords='offset points', xytext = (20, -50),
+                textcoords='offset points', xytext = (30, 0),
                 arrowprops=dict(edgecolor='k',facecolor='k', arrowstyle='-|>', 
                         linewidth=2, 
-                        connectionstyle="arc,angleA=180,armA=85,rad=20"),
+                        connectionstyle="arc,angleA=180,armA=80,rad=20"),
                 size=10, #path_effects=[_s]
                 )
             _t.arrow_patch.set_path_effects([_s])
@@ -229,6 +230,9 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
     if c_label is None:
         c_label = r'$T\,$' + unit
     cax.set_ylabel(c_label)
+
+    if output_name is not None:
+        fig.savefig(output_name)
 
     return xlim, ylim, (vmin, vmax)
 

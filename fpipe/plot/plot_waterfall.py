@@ -527,6 +527,7 @@ class PlotVvsTime(PlotTimeStream):
                 #print gi, li
                 x_axis = ts['ra'][:, gi]
                 self.x_label = 'R.A.' 
+                print 'RA range %f - %f'%(x_axis.min(), x_axis.max())
             else:
                 x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
                 self.x_label = '%s UTC' % x_axis[0].date()
@@ -714,6 +715,7 @@ class PlotNcalVSTime(PlotVvsTime):
         good_time_ed = np.argwhere(~bad_time)[-1, 0]
         vis1 = vis1[good_time_st:good_time_ed, ...]
         vis_mask = vis_mask[good_time_st:good_time_ed, ...]
+        time = ts['sec1970'][good_time_st:good_time_ed]
         x_axis = x_axis[good_time_st:good_time_ed]
 
         on  = on[good_time_st:good_time_ed]
@@ -734,9 +736,9 @@ class PlotNcalVSTime(PlotVvsTime):
         vis1 /= bandpass[None, ...]
         #vis1 /= np.ma.mean(vis1, axis=(0,1))[None, None, :]
 
-        x_axis   = x_axis[on]
-        x_axis_norm = x_axis - x_axis[0]
-        x_axis_norm /= x_axis_norm.max()
+        #x_axis   = x_axis[on]
+        #x_axis_norm = x_axis - x_axis[0]
+        #x_axis_norm /= x_axis_norm.max()
 
         axhh = self.axhh
         axvv = self.axvv
@@ -747,20 +749,27 @@ class PlotNcalVSTime(PlotVvsTime):
 
         vis1[vis1 == 0] = np.ma.masked
         vis1 = np.ma.median(vis1, axis=1)
-        good = ~vis1.mask
         poly_order = self.params['timevars_poly']
-        vis1_poly_xx = np.poly1d(
-                np.polyfit(x_axis_norm[good[:,0]], vis1[:, 0][good[:,0]], poly_order))
-        vis1_poly_yy = np.poly1d(
-                np.polyfit(x_axis_norm[good[:,1]], vis1[:, 1][good[:,1]], poly_order))
+        good = ~vis1.mask
+
+        #vis1[:, 0][good[:, 0]] = medfilt(vis1[:, 0][good[:, 0]], kernel_size=(31,))
+        #vis1[:, 1][good[:, 1]] = medfilt(vis1[:, 1][good[:, 1]], kernel_size=(31,))
+        #vis1_poly_xx, vis1_poly_yy = bp.polyfit_timedrift(vis1, time, on, poly_order)
+        vis1_poly_xx, vis1_poly_yy = bp.medfilt_timedrift(vis1, time, on,
+                kernel_size=31)
+
+        #vis1_poly_xx = np.poly1d(
+        #        np.polyfit(x_axis_norm[good[:,0]], vis1[:, 0][good[:,0]], poly_order))
+        #vis1_poly_yy = np.poly1d(
+        #        np.polyfit(x_axis_norm[good[:,1]], vis1[:, 1][good[:,1]], poly_order))
 
         #vis1 = np.ma.array(medfilt(vis1.data, kernel_size=(11, 1)), mask = vis1.mask)
 
-        _l = axhh.plot(x_axis,vis1[:,0],'-',lw=1,drawstyle='steps-mid')
-        axhh.plot(x_axis, vis1_poly_xx(x_axis_norm), '-', c=_l[0].get_color(), lw=2.0,
+        _l = axhh.plot(x_axis[on], vis1[:,0], '-',lw=0.5) #,drawstyle='steps-mid')
+        axhh.plot(x_axis, vis1_poly_xx, '-', c=_l[0].get_color(), lw=2.0,
                 zorder=1000,label=label)
-        _l = axvv.plot(x_axis,vis1[:,1],'-',lw=1,drawstyle='steps-mid')
-        axvv.plot(x_axis, vis1_poly_yy(x_axis_norm), '-', c=_l[0].get_color(), lw=2.0,
+        _l = axvv.plot(x_axis[on], vis1[:,1], '-',lw=0.5) #,drawstyle='steps-mid')
+        axvv.plot(x_axis, vis1_poly_yy, '-', c=_l[0].get_color(), lw=2.0,
                 zorder=1000)
 
         axhh.axhline(1, 0, 1, c='k', lw=1.5, ls='--')

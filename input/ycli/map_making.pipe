@@ -1,7 +1,7 @@
 # -*- mode: python; -*-
 #
 
-from meerKAT_sim.map import dirtymap, cleanmap
+from fpipe.map import dirtymap, cleanmap
 
 data_base = '/scratch/users/ycli/fanalysis/'
 DATA_Key = '0531'
@@ -31,14 +31,14 @@ input_files = [ 'tsys_cal%s/%s'%(fslice, f) for f in FILE_LIST]
 #suffix = '_noweight'
 #suffix = '_beamcut'
 #suffix = '_noweight_beamcut'
-suffix = '_bc0.6_tsysnorm_small'
+suffix = '_bc0.6_tsysnorm'
 
 #dmall_field_centre = (152.5, 26.68)
 #dmall_map_shape = [600, 35]
 
 dmall_field_centre = (156, 26.67)
-#dmall_map_shape = [800, 34]
-dmall_map_shape = [400, 34]
+dmall_map_shape = [800, 34]
+#dmall_map_shape = [400, 34]
 #dmall_map_shape = [400, 28]
 
 dmall_pixel_spacing = 3./60./4.

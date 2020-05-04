@@ -56,14 +56,6 @@ class Normal_Tsys(timestream_task.TimestreamTask):
         vis1 = np.ma.array(vis1)
         vis1.mask  = vis_mask.copy()
         vis1[vis1==0] = np.ma.masked
-
-        T_sys = self.params['T_sys']
-        print "Norm. T_sys to %f K"%T_sys
-        vis /= np.ma.median(vis1[~on, ...], axis=(0, 1))[None, None, :]
-        vis *= T_sys
-        if self.params['sub_mean']:
-            vis -= T_sys
-
         vis1.mask[~on, ...] = True
         vis1.mask[on, ...] = False
 
@@ -76,26 +68,99 @@ class Normal_Tsys(timestream_task.TimestreamTask):
         bandpass[bandpass==0] = np.inf
 
         time  = ts['sec1970'][:]
-        time -= time[0]
-        time /= time.max()
-        time_on = time[on]
+        #time -= time[0]
+        #time /= time.max()
         #vis1 /= np.ma.median(vis1, axis=(0,1))[None, None, :]
         vis1 /= bandpass[None, ...]
         vis1[vis1 == 0.] = np.ma.masked
         vis1 = np.ma.median(vis1, axis=1)
-        good = ~vis1.mask
-        vis1_poly_xx = np.poly1d(np.polyfit(time_on[good[:,0]], 
-                                            vis1[:, 0][good[:,0]],
-                                            poly_order))
-        vis1_poly_yy = np.poly1d(np.polyfit(time_on[good[:,1]], 
-                                            vis1[:, 1][good[:,1]], 
-                                            poly_order))
+        #poly_xx, poly_yy = polyfit_timedrift(vis1, time, on, poly_order)
+        poly_xx, poly_yy = medfilt_timedrift(vis1, time, on)
+        vis[..., 0] /= poly_xx[:, None]
+        vis[..., 1] /= poly_yy[:, None]
+        #vis_st = 0
+        #for st in np.arange(0, time.shape[0], 2048):
+        #    ed  = st + 2048
+        #    _time = time[st:ed].copy()
+        #    _time -= _time[0]
+        #    _time /= _time[-1]
+        #    _time_on = _time[on[st:ed]]
+        #    vis_ed = vis_st + _time_on.shape[0]
+        #    _vis1 = vis1[vis_st:vis_ed, ...]
+        #    vis_st = vis_ed
+        #    _good = ~_vis1.mask
+        #    vis1_poly_xx = np.poly1d(np.polyfit(_time_on[_good[:,0]], 
+        #                                        _vis1[:, 0][_good[:,0]],
+        #                                        poly_order))
+        #    vis1_poly_yy = np.poly1d(np.polyfit(_time_on[_good[:,1]], 
+        #                                        _vis1[:, 1][_good[:,1]], 
+        #                                        poly_order))
 
-        vis[..., 0] /= vis1_poly_xx(time)[:, None]
-        vis[..., 1] /= vis1_poly_yy(time)[:, None]
+        #    vis[st:ed, ..., 0] /= vis1_poly_xx(_time)[:, None]
+        #    vis[st:ed, ..., 1] /= vis1_poly_yy(_time)[:, None]
 
         del vis1
 
+        vis1 = vis.copy()
+        vis1 = np.ma.array(vis1)
+        vis1.mask  = vis_mask.copy()
+        vis1[vis1==0] = np.ma.masked
+
+        T_sys = self.params['T_sys']
+        print "Norm. T_sys to %f K"%T_sys
+        vis /= np.ma.median(vis1[~on, ...], axis=(0, 1))[None, None, :]
+        vis *= T_sys
+        if self.params['sub_mean']:
+            vis -= T_sys
+
+        del vis1
+def medfilt_timedrift(vis1, time, on, kernel_size=31, fill_value = 'extrapolate'):
+
+    good_xx = ~vis1.mask[:, 0]
+    good_yy = ~vis1.mask[:, 1]
+
+    nd_xx = medfilt(vis1[:, 0][good_xx], kernel_size=(kernel_size))
+    nd_yy = medfilt(vis1[:, 1][good_yy], kernel_size=(kernel_size))
+    #nd_xx = gaussian_filter1d(vis1[:, 0][good_xx], sigma=kernel_size)
+    #nd_yy = gaussian_filter1d(vis1[:, 1][good_yy], sigma=kernel_size)
+
+    medfilt_xx = interpolate.interp1d(time[on][good_xx], nd_xx, kind='linear', 
+            bounds_error=False, fill_value=fill_value)(time)
+    medfilt_yy = interpolate.interp1d(time[on][good_yy], nd_yy, kind='linear', 
+            bounds_error=False, fill_value=fill_value)(time)
+
+    return medfilt_xx, medfilt_yy
+
+def polyfit_timedrift(vis1, time, on, poly_order, poly_len=2048):
+
+    vis_st = 0
+    poly_xx = []
+    poly_yy = []
+    for st in np.arange(0, time.shape[0], poly_len):
+        ed  = st + poly_len
+        _time = time[st:ed].copy()
+        _time -= _time[0]
+        _time /= _time[-1]
+        _time_on = _time[on[st:ed]]
+        vis_ed = vis_st + _time_on.shape[0]
+        _vis1 = vis1[vis_st:vis_ed, ...]
+        vis_st = vis_ed
+        _good = ~_vis1.mask
+        vis1_poly_xx = np.poly1d(np.polyfit(_time_on[_good[:,0]], 
+                                            _vis1[:, 0][_good[:,0]],
+                                            poly_order))
+        vis1_poly_yy = np.poly1d(np.polyfit(_time_on[_good[:,1]], 
+                                            _vis1[:, 1][_good[:,1]], 
+                                            poly_order))
+    
+        poly_xx.append(vis1_poly_xx(_time))
+        poly_yy.append(vis1_poly_yy(_time))
+        #vis[st:ed, ..., 0] /= vis1_poly_xx(_time)[:, None]
+        #vis[st:ed, ..., 1] /= vis1_poly_yy(_time)[:, None]
+
+    poly_xx = np.concatenate(poly_xx)
+    poly_yy = np.concatenate(poly_yy)
+    return poly_xx, poly_yy
 
 class Bandpass_Cal(timestream_task.TimestreamTask):
     """

@@ -22,18 +22,18 @@ def get_calibrator_spec(freq, cal_data_path='', cal_param=None):
         a, nu, idx = cal_param
         cal_flux = (10 ** a) * ((freq / nu) ** (idx) )
 
-    #kBol = 1.38e6 # mJy m^2 /K
-    #eta   = 0.7
-    #_lambda = 2.99e8 / (freq * 1.e9)
-    #_sigma = _lambda / 300. / 2. / (2. * np.log(2.))**0.5
-    #Aeff   = eta * _lambda ** 2. / (2. * np.pi * _sigma ** 2.)
-    #mJy2K  = Aeff / 2. / kBol
-    #print mJy2K
-
+    kBol = 1.38e6 # mJy m^2 /K
     eta   = 0.9
     _lambda = 2.99e8 / (freq * 1.e9)
-    _sigma = 1.22 *  _lambda / 300. / np.pi * 180. * 3600.
-    mJy2K = eta * 1.36 * (_lambda*1.e2)**2. / _sigma**2.
+    _sigma = 1.22 * _lambda / 300. / 2. / (2. * np.log(2.))**0.5
+    Aeff   = eta * _lambda ** 2. / (2. * np.pi * _sigma ** 2.)
+    mJy2K  = Aeff / 2. / kBol
+    #print mJy2K
+
+    #eta   = 0.9
+    #_lambda = 2.99e8 / (freq * 1.e9)
+    #_sigma = 1.22 *  _lambda / 300. / np.pi * 180. * 3600.
+    #mJy2K = eta * 1.36 * (_lambda*1.e2)**2. / _sigma**2.
     print 'Jy2K : %f'%(mJy2K[-1] * 1.e3)
 
     cal_T = cal_flux * mJy2K # in K
@@ -60,10 +60,13 @@ def get_source_spec(source, map_path='', map_name_list=['',], smoothing=True):
             continue
 
         if smoothing:
+            map_mask = imap == 0.
             _pix = np.abs(dec[1] - dec[0]) * 60.
             pm.smooth_map(imap, _pix, freq)
+            imap[map_mask] = 0.
 
         freq = freq / 1.e3
+        print 'Freq. range %f - %f'%( freq.min(), freq.max())
 
         if freq.min() < freq_min: freq_min = freq.min()
         if freq.max() > freq_max: freq_max = freq.max()
