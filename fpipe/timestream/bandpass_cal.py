@@ -18,6 +18,8 @@ class Normal_Tsys(timestream_task.TimestreamTask):
 
     params_init = {
             'T_sys' : 20. ,
+            'relative_gain' : None,
+            'eta_A' : None,
             'timevars_poly' : 6,
             'noise_on_time': 1,
             'sub_mean' : True,
@@ -107,11 +109,23 @@ class Normal_Tsys(timestream_task.TimestreamTask):
         vis1[vis1==0] = np.ma.masked
 
         T_sys = self.params['T_sys']
-        print "Norm. T_sys to %f K"%T_sys
-        vis /= np.ma.median(vis1[~on, ...], axis=(0, 1))[None, None, :]
-        vis *= T_sys
-        if self.params['sub_mean']:
-            vis -= T_sys
+        if T_sys is not None:
+            print "Norm. T_sys to %f K"%T_sys
+            vis /= np.ma.median(vis1[~on, ...], axis=(0, 1))[None, None, :]
+            vis *= T_sys
+            if self.params['sub_mean']:
+                vis -= T_sys
+
+        relative_gain = self.params['relative_gain']
+        if relative_gain is not None:
+            print "relative gain cal %d (%f %f)"%((gi,) + tuple(relative_gain[gi]))
+            vis *= relative_gain[gi, :][..., :]
+
+        eta_A = self.params['eta_A']
+        if eta_A is not None:
+            print 'eta A cal'
+            #factor = np.pi ** 2. / 4. / np.log(2.)
+            vis /= eta_A[gi] #* factor
 
         del vis1
 def medfilt_timedrift(vis1, time, on, kernel_size=31, fill_value = 'extrapolate'):

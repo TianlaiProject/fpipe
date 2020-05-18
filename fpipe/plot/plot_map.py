@@ -76,7 +76,7 @@ def smooth_map(imap, pix, freq):
     _sig = _fwhm/(8. * np.log(2.))**0.5 / pix
     for i in range(imap.shape[0]):
         #print _fwhm[i], _sig[i]
-        kernel_n = 3. * int(_sig[i])
+        kernel_n = 1.17 * int(_sig[i])
         kernel =  np.arange(-kernel_n, kernel_n+1)
         kernel = np.exp( - 0.5 * kernel ** 2 / _sig[i] ** 2 )
         kernel = kernel[:, None] * kernel[None, :]
@@ -88,7 +88,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
             title='', c_label=None, factorize=False, 
             nvss_path = None, smoothing=False, 
-            output_name=None):
+            output_name=None,
+            fig_axes = None):
 
     with h5.File(map_path, 'r') as f:
         keys = tuple(f.keys())
@@ -110,8 +111,15 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
     if map_type == 'noise_diag' and factorize:
         imap = fgrm.make_noise_factorizable(imap)
 
-    imap = imap[indx]
-    freq = freq[indx[-1]]
+    if indx is None:
+        print 'average over freq'
+        imap = np.ma.masked_equal(imap, 0)
+        imap = np.ma.masked_invalid(imap)
+        imap = np.ma.mean(imap, axis=0)
+        freq = np.mean(freq)
+    else:
+        imap = imap[indx]
+        freq = freq[indx[-1]]
 
     if mK: 
         if map_type == 'noise_diag':
@@ -126,12 +134,17 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         else:
             unit = r'$[\rm K]$'
 
+    #if fig_axes is not None:
+    #    ra_0 = ra_edges.min()
+    #else:
+    #    ra_0 = 0.
+
     if xlim is None:
         xlim = [ra_edges.min(), ra_edges.max()]
     if ylim is None:
         ylim = [dec_edges.min(), dec_edges.max()]
 
-    imap[np.abs(imap) < imap.max() * 1.e-4] = 0.
+    #imap[np.abs(imap) < imap.max() * 1.e-4] = 0.
     imap = np.ma.masked_equal(imap, 0)
     imap = np.ma.masked_invalid(imap)
     #imap -= np.ma.mean(imap)
@@ -159,17 +172,20 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     
     
-    fig = plt.figure(figsize=figsize)
-    l = 0.07 * 10. / figsize[0]
-    b = 0.10 *  4  / figsize[1]
-    w = 1 - 0.30 * 10  / figsize[0]
-    h = 1 - 0.20 *  4  / figsize[1]
-    ax = fig.add_axes([l, b, w, h])
-    l = 1 - 0.22 * 10. / figsize[0]
-    b = 0.20 *  4  / figsize[1]
-    w = 1 - 0.21 * 10  / figsize[0] - l
-    h = 1 - 0.40 *  4  / figsize[1]
-    cax = fig.add_axes([l, b, w, h])
+    if fig_axes is None:
+        fig = plt.figure(figsize=figsize)
+        l = 0.07 * 10. / figsize[0]
+        b = 0.10 *  4  / figsize[1]
+        w = 1 - 0.30 * 10  / figsize[0]
+        h = 1 - 0.20 *  4  / figsize[1]
+        ax = fig.add_axes([l, b, w, h])
+        l = 1 - 0.22 * 10. / figsize[0]
+        b = 0.20 *  4  / figsize[1]
+        w = 1 - 0.21 * 10  / figsize[0] - l
+        h = 1 - 0.40 *  4  / figsize[1]
+        cax = fig.add_axes([l, b, w, h])
+    else:
+        fig, ax, cax = fig_axes
     ax.set_aspect('equal')
 
     #imap = np.sum(imap, axis=1)
@@ -177,11 +193,12 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
     #imap = np.array(imap)
     
     cm = ax.pcolormesh(ra_edges, dec_edges, imap.T, norm=norm)
-    ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$'%freq)
+    if fig_axes is None:
+        ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$'%freq)
+        ax.set_xlabel(r'${\rm RA}\,[^\circ]$')
+        ax.set_ylabel(r'${\rm Dec}\,[^\circ]$')
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
-    ax.set_xlabel(r'${\rm RA}\,[^\circ]$')
-    ax.set_ylabel(r'${\rm Dec}\,[^\circ]$')
 
     nvss_range = [ [ra_edges.min(), ra_edges.max(), 
                     dec_edges.min(), dec_edges.max()],]
@@ -190,9 +207,9 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         nvss_sel = nvss_cat['FLUX_20_CM'] > 10.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
-        ax.plot(nvss_ra, nvss_dec, 'ko', mec='k', mfc='none', ms=8, mew=1.5)
+        ax.plot(nvss_ra, nvss_dec, 'ko', mec='k', mfc='none', ms=8, mew=0.5)
 
-        _sel = nvss_cat['FLUX_20_CM'] > 50.
+        _sel = nvss_cat['FLUX_20_CM'] > 2000.
         _id  = nvss_cat['NAME'][_sel]
         _ra  = nvss_cat['RA'][_sel]
         _dec = nvss_cat['DEC'][_sel]
@@ -222,14 +239,23 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         ticks_label = []
         for x in ticks:
             ticks_label.append(r"$%5.2f$"%x)
-        fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks)
+        if fig_axes is None:
+            fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks)
+        else:
+            fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks, orientation = "horizontal" )
         cax.set_yticklabels(ticks_label)
     else:
-        fig.colorbar(cm, ax=ax, cax=cax)
+        if fig_axes is None:
+            fig.colorbar(cm, ax=ax, cax=cax )
+        else:
+            fig.colorbar(cm, ax=ax, cax=cax, orientation = "horizontal" )
     cax.minorticks_off()
     if c_label is None:
         c_label = r'$T\,$' + unit
-    cax.set_ylabel(c_label)
+    if fig_axes is None:
+        cax.set_ylabel(c_label)
+    else:
+        cax.set_xlabel(c_label)
 
     if output_name is not None:
         fig.savefig(output_name)
@@ -240,7 +266,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
 def plot_map(data, indx = (), figsize=(10, 4),
             xlim=None, ylim=None, logscale=False,
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
-            smoothing=False, nvss_path=None, c_label=None, title=''):
+            smoothing=False, nvss_path=None, c_label=None, title='',
+            fig_axes = None):
 
     #imap *= 1.e3
     #imap = data[0][indx + (slice(None),)]
@@ -300,10 +327,13 @@ def plot_map(data, indx = (), figsize=(10, 4),
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     
     
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_axes([0.07, 0.10, 0.70, 0.8])
-    cax = fig.add_axes([0.78, 0.2, 0.01, 0.6])
-    ax.set_aspect('equal')
+    if fig_axes is None:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_axes([0.07, 0.10, 0.70, 0.8])
+        cax = fig.add_axes([0.78, 0.2, 0.01, 0.6])
+        ax.set_aspect('equal')
+    else:
+        fig, ax, cax = fig_axes
 
     #imap = np.sum(imap, axis=1)
     

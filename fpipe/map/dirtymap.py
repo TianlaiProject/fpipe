@@ -173,7 +173,15 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
 
 
         logger.debug('est. var %d %d'%(n_time, tblock_len))
-        sub_ortho_poly(vis, time, ~vis_mask.astype('bool') , n_poly)
+        _vis = np.ma.array(vis.copy())
+        _vis.mask = vis_mask
+        median = np.ma.median(_vis, axis=0)
+        vis -= median[None, ...]
+        #vis_fit = sub_ortho_poly(vis, time, ~vis_mask.astype('bool') , n_poly)
+        #for i in range(vis_fit.shape[-1]):
+        #    good = vis_fit[:, 0, i] != 0
+        #    plt.plot(np.arange(vis_fit.shape[0])[good], vis_fit[good, 0, i], '.')
+        #    plt.show()
         if self.params['noise_weight']:
             for st in range(0, n_time, tblock_len):
                 et = st + tblock_len
@@ -204,11 +212,14 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
                 #_vis_mask += (_vis - 3 * np.sqrt(_vars[None, ...])) > 0.
                 #_vis[_vis_mask] = 0.
                 msg = 'min vars = %f, max vars = %f'%(_vars.min(), _vars.max())
-                logger.debug(msg)
+                #logger.debug(msg)
+                logger.info(msg)
                 #_vars[_bad] = T_infinity ** 2.
                 #_bad = _vars < T_small ** 2
                 #_vars[_bad] = T_small ** 2
-                vis_var[st:et, li, ...] += _vars[None, :]
+                #vis_var[st:et, li, ...] += _vars[None, :] * vis_fit[st:et, ...]
+                vis_var[st:et, li, ...] += _vars[None, :] * median[None, ...]
+                #vis_var[st:et, li, ...][_vis_mask, ...] = T_infinity ** 2.
         else:
             vis_var[:] = 1.
 
@@ -665,6 +676,7 @@ def sub_ortho_poly(vis, time, mask, n):
     vis_fit = np.sum(amp[:, None, ...] * polys, 0)
     vis -= vis_fit
     #return vis
+    return vis_fit
 
 def ortho_poly(x, n, window=1., axis=-1):
     """Generate orthonormal basis polynomials.

@@ -756,7 +756,7 @@ class PlotNcalVSTime(PlotVvsTime):
         #vis1[:, 1][good[:, 1]] = medfilt(vis1[:, 1][good[:, 1]], kernel_size=(31,))
         #vis1_poly_xx, vis1_poly_yy = bp.polyfit_timedrift(vis1, time, on, poly_order)
         vis1_poly_xx, vis1_poly_yy = bp.medfilt_timedrift(vis1, time, on,
-                kernel_size=31)
+                kernel_size=51)
 
         #vis1_poly_xx = np.poly1d(
         #        np.polyfit(x_axis_norm[good[:,0]], vis1[:, 0][good[:,0]], poly_order))
@@ -765,10 +765,10 @@ class PlotNcalVSTime(PlotVvsTime):
 
         #vis1 = np.ma.array(medfilt(vis1.data, kernel_size=(11, 1)), mask = vis1.mask)
 
-        _l = axhh.plot(x_axis[on], vis1[:,0], '-',lw=0.5) #,drawstyle='steps-mid')
+        _l = axhh.plot(x_axis[on], vis1[:,0], '-',lw=0.1) #,drawstyle='steps-mid')
         axhh.plot(x_axis, vis1_poly_xx, '-', c=_l[0].get_color(), lw=2.0,
                 zorder=1000,label=label)
-        _l = axvv.plot(x_axis[on], vis1[:,1], '-',lw=0.5) #,drawstyle='steps-mid')
+        _l = axvv.plot(x_axis[on], vis1[:,1], '-',lw=0.1) #,drawstyle='steps-mid')
         axvv.plot(x_axis, vis1_poly_yy, '-', c=_l[0].get_color(), lw=2.0,
                 zorder=1000)
 

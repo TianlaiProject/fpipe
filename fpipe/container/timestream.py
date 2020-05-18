@@ -89,8 +89,7 @@ class FAST_Timestream(timestream.Timestream):
                     comm=self.comm, dtype=self.main_data.dtype)
             # convert to Stokes I, Q, U, V
             #print "convert to Stokes I, Q, U, V "
-            #md.local_array[:, :, 0] = # do we need 0.5? \
-            md.local_array[:, :, 0] = (
+            md.local_array[:, :, 0] = 0.5 * ( 
                       self.main_data.local_data[:, :, pol.index(p['hh'])]\
                     + self.main_data.local_data[:, :, pol.index(p['vv'])]) # I
 
@@ -107,8 +106,8 @@ class FAST_Timestream(timestream.Timestream):
                 mk = mpiarray.MPIArray(shp, axis=self.main_data_dist_axis, 
                         comm=self.comm, dtype=self[self.main_data_name + '_mask'].dtype)
                 mk.local_array[:, :, 0] = \
-                          self[self.main_data_name + '_mask'].local_data[:, :, pol.index(p['hh'])]\
-                        * self[self.main_data_name + '_mask'].local_data[:, :, pol.index(p['vv'])] 
+                self[self.main_data_name + '_mask'].local_data[:, :, pol.index(p['hh'])]\
+                + self[self.main_data_name + '_mask'].local_data[:, :, pol.index(p['vv'])] 
                 attr_dict = {} # temporarily save attrs of this dataset
                 memh5.copyattrs(self[self.main_data_name + '_mask'].attrs, attr_dict)
                 del self[self.main_data_name + '_mask']
