@@ -12,9 +12,10 @@ Inheritance diagram
 from datetime import datetime, timedelta
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
-from tlpipe.timestream import timestream_task
-from tlpipe.container.raw_timestream import RawTimestream
-from tlpipe.container.timestream import Timestream
+from fpipe.timestream import timestream_task
+from fpipe.timestream import bandpass_cal as bp
+#from tlpipe.container.raw_timestream import RawTimestream
+#from tlpipe.container.timestream import Timestream
 from tlpipe.utils.path_util import output_path
 from tlpipe.utils import hist_eq
 import matplotlib.pyplot as plt
@@ -26,6 +27,14 @@ from astropy.time import Time
 from scipy.signal import medfilt
 from scipy.ndimage import gaussian_filter1d
 from scipy import signal
+from scipy import special
+
+from tlpipe.rfi import interpolate
+from tlpipe.rfi import gaussian_filter
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # tz = pytz.timezone('Asia/Shanghai')
 
@@ -54,6 +63,10 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
             'unit' : r'${\rm T}\,[{\rm K}]$', 
             }
     prefix = 'pkat_'
+
+    def __init__(self, parameter_file_or_dict=None, feedback=0):
+        super(PlotMeerKAT, self).__init__(parameter_file_or_dict, feedback)
+        self.feedback = feedback
 
     def process(self, ts):
 
@@ -111,12 +124,15 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
 
         vis1 = np.ma.array(vis)
         if flag_mask:
-            vis1.mask = vis_mask
+            vis1.mask  = vis_mask
+            logger.info('share mask with pols')
+            vis1.mask += np.sum(vis1.mask, axis=-1).astype('bool')[:, :, None]
+            freq = ts['freq'][:] - 1420.
+            local_hi = np.abs(freq) < 5
+            vis1.mask[:, local_hi, ...] = False
+        else:
+            vis1.mask = np.zeros(vis1.shape, dtype='bool')
 
-        #if 'flags' in ts.iterkeys():
-        #    print 'apply raw flags'
-        #    print ts['flags'].shape
-        #    vis1.mask += ts['flags'][:]
 
         if flag_ns:
             if 'ns_on' in ts.iterkeys():
@@ -142,6 +158,7 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
                 #print gi, li
                 x_axis = ts['ra'][:, gi]
                 x_label = 'R.A.' 
+                print 'RA range [%6.2f, %6.2f]'%( x_axis.min(), x_axis.max())
             else:
                 x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
                 x_label = 'UTC %s' % x_axis[0].date()
@@ -271,6 +288,10 @@ class PlotTimeStream(timestream_task.TimestreamTask):
             }
     prefix = 'ptsbase_'
 
+    def __init__(self, parameter_file_or_dict=None, feedback=0):
+        super(PlotTimeStream, self).__init__(parameter_file_or_dict, feedback)
+        self.feedback = feedback
+
     def process(self, ts):
 
         fig  = plt.figure(figsize=(8, 6))
@@ -359,7 +380,7 @@ class PlotTimeStream(timestream_task.TimestreamTask):
         axhh.minorticks_on()
         axhh.tick_params(length=4, width=1, direction='in')
         axhh.tick_params(which='minor', length=2, width=1, direction='in')
-        axhh.legend(title=self.params['legend_title'])
+        axhh.legend(title=self.params['legend_title'], ncol=6)
 
         if not self.params['plot_index'] and not self.params['plot_ra']:
             axvv.xaxis.set_major_formatter(date_format)
@@ -410,11 +431,49 @@ def get_nvss_radec(nvss_path, nvss_range):
 
     return data[_sel]
 
+def sub_ortho_poly(vis, time, mask, n):
+
+    logger.debug('sub. mean')
+    
+    window = mask
+    x = time
+    
+    upbroad = (slice(None), slice(None)) + (None, ) * (window.ndim - 1)
+    window = window[None, ...]
+    
+    x_mid = (x.max() + x.min())/2.
+    x_range = (x.max() - x.min()) /2.
+    x = (x - x_mid) / x_range
+    
+    n = np.arange(n)[:, None]
+    x = x[None, :]
+    polys = special.eval_legendre(n, x, out=None)
+    polys = polys[upbroad] * window
+
+    for ii in range(n.shape[0]):
+        for jj in range(ii):
+            amp = np.sum(polys[ii, ...] * polys[jj, ...], axis=0)
+            polys[ii, ...] -= amp[None, ...] * polys[jj, ...]
+            
+        norm  = np.sqrt(np.sum(polys[ii] ** 2, axis=0))
+        norm[norm==0] = np.inf
+        polys[ii] /= norm[None, ...]
+    
+    amp = np.sum(polys * vis[None, ...], 1)
+    vis_fit = np.sum(amp[:, None, ...] * polys, 0)
+    #vis -= vis_fit
+    return vis_fit
 
 class PlotVvsTime(PlotTimeStream):
 
     prefix = 'pts_'
 
+    params_init = {
+            'rm_mean' : False,
+            'rm_slop' : False,
+            'rm_point_sources' : False,
+            't_block' : None
+            }
 
     def plot(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
 
@@ -436,6 +495,8 @@ class PlotVvsTime(PlotTimeStream):
         vis1 = np.ma.array(vis)
         if flag_mask:
             vis1.mask = vis_mask
+        else:
+            vis1.mask = np.zeros(vis1.shape, dtype='bool')
 
         if flag_ns:
             if 'ns_on' in ts.iterkeys():
@@ -466,6 +527,7 @@ class PlotVvsTime(PlotTimeStream):
                 #print gi, li
                 x_axis = ts['ra'][:, gi]
                 self.x_label = 'R.A.' 
+                print 'RA range %f - %f'%(x_axis.min(), x_axis.max())
             else:
                 x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
                 self.x_label = '%s UTC' % x_axis[0].date()
@@ -497,13 +559,41 @@ class PlotVvsTime(PlotTimeStream):
         label = 'M%03d'%(bl[0] - 1)
         #axhh.plot(x_axis, np.ma.mean(vis1[:,:,0], axis=1), '.', label = label)
         #axvv.plot(x_axis, np.ma.mean(vis1[:,:,1], axis=1), '.')
-        _l = axhh.plot(x_axis, np.ma.mean(vis1[:,:,0], axis=1), '-', 
-                label = label, drawstyle='steps-mid')
-        axhh.plot(x_axis, np.ma.mean(vis1[:,:,0], axis=1), '.', c=_l[0].get_color())
+        if len(vis1.shape) == 3:
+            vis1 = np.ma.mean(vis1, axis=1)
 
-        axvv.plot(x_axis, np.ma.mean(vis1[:,:,1], axis=1), '-',
-                drawstyle='steps-mid')
-        axvv.plot(x_axis, np.ma.mean(vis1[:,:,1], axis=1), '.', c=_l[0].get_color())
+        time = np.arange(x_axis.shape[0])
+        _n = 0
+        t_block = self.params['t_block']
+        if   self.params['rm_slop']: _n = 2
+        elif self.params['rm_mean']: _n = 1
+        if t_block is None: t_block = len(time)
+        for ii in range(0, len(time), t_block):
+            st = ii
+            ed = ii + t_block
+            _vis1 = vis1[st:ed, ...]
+            _time = time[st:ed]
+            bg  = gaussian_filter.GaussianFilter(
+                        interpolate.Interpolate(_vis1, _vis1.mask).fit(), 
+                        time_kernal_size=0.5, freq_kernal_size=1, 
+                        filter_direction = ('time', )).fit()
+            if _n != 0:
+                _vis1 -= sub_ortho_poly(bg, _time, ~_vis1.mask, _n)
+            if self.params['rm_point_sources']:
+                bg  = gaussian_filter.GaussianFilter(
+                        interpolate.Interpolate(_vis1, _vis1.mask).fit(), 
+                        time_kernal_size=0.5, freq_kernal_size=1, 
+                        filter_direction = ('time', )).fit()
+                _vis1 -= bg
+            vis1[st:ed, ...] = _vis1
+        
+
+        _l = axhh.plot(x_axis, vis1[:,0], '-', drawstyle='steps-mid',
+                label = label)
+        #_l = axhh.plot(x_axis, vis1[:,0], '.', c=_l[0].get_color())
+
+        _l = axvv.plot(x_axis, vis1[:,1], '-', drawstyle='steps-mid')
+        #_l = axvv.plot(x_axis, vis1[:,1], '.', c=_l[0].get_color())
 
 
         if xmin is None: xmin = x_axis[0]
@@ -556,6 +646,7 @@ class PlotNcalVSTime(PlotVvsTime):
     params_init = {
             'noise_on_time' : 2,
             'timevars_poly' : 4,
+            'kernel_size' : 11,
             }
 
     prefix = 'pnt_'
@@ -623,6 +714,8 @@ class PlotNcalVSTime(PlotVvsTime):
         good_time_st = np.argwhere(~bad_time)[ 0, 0]
         good_time_ed = np.argwhere(~bad_time)[-1, 0]
         vis1 = vis1[good_time_st:good_time_ed, ...]
+        vis_mask = vis_mask[good_time_st:good_time_ed, ...]
+        time = ts['sec1970'][good_time_st:good_time_ed]
         x_axis = x_axis[good_time_st:good_time_ed]
 
         on  = on[good_time_st:good_time_ed]
@@ -630,13 +723,22 @@ class PlotNcalVSTime(PlotVvsTime):
         good_freq_st = np.argwhere(~bad_freq)[ 0, 0]
         good_freq_ed = np.argwhere(~bad_freq)[-1, 0]
         vis1 = vis1[:, good_freq_st:good_freq_ed, ...]
+        vis_mask = vis_mask[:, good_freq_st:good_freq_ed, ...]
 
 
-        vis1, on = get_Ncal(vis1, vis_mask, on, on_t)
-        vis1 /= np.ma.median(vis1, axis=(0,1))[None, None, :]
+        kernel_size = self.params['kernel_size']
+        vis1, on = bp.get_Ncal(vis1, vis_mask, on, on_t)
+        bandpass = np.ma.median(vis1, axis=0)
+        bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=kernel_size)
+        bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=kernel_size)
+        bandpass = np.ma.filled(bandpass, 0)
+        bandpass[bandpass==0] = np.inf
+        vis1 /= bandpass[None, ...]
         #vis1 /= np.ma.mean(vis1, axis=(0,1))[None, None, :]
 
-        x_axis   = x_axis[on]
+        #x_axis   = x_axis[on]
+        #x_axis_norm = x_axis - x_axis[0]
+        #x_axis_norm /= x_axis_norm.max()
 
         axhh = self.axhh
         axvv = self.axvv
@@ -645,20 +747,30 @@ class PlotNcalVSTime(PlotVvsTime):
         #axhh.plot(x_axis, np.ma.mean(vis1[:,:,0], axis=1), '.', label = label)
         #axvv.plot(x_axis, np.ma.mean(vis1[:,:,1], axis=1), '.')
 
+        vis1[vis1 == 0] = np.ma.masked
         vis1 = np.ma.median(vis1, axis=1)
-        good = ~vis1.mask
         poly_order = self.params['timevars_poly']
-        vis1_poly_xx = np.poly1d(
-                np.polyfit(x_axis[good[:,0]], vis1[:, 0][good[:,0]], poly_order))
-        vis1_poly_yy = np.poly1d(
-                np.polyfit(x_axis[good[:,1]], vis1[:, 1][good[:,1]], poly_order))
+        good = ~vis1.mask
+
+        #vis1[:, 0][good[:, 0]] = medfilt(vis1[:, 0][good[:, 0]], kernel_size=(31,))
+        #vis1[:, 1][good[:, 1]] = medfilt(vis1[:, 1][good[:, 1]], kernel_size=(31,))
+        #vis1_poly_xx, vis1_poly_yy = bp.polyfit_timedrift(vis1, time, on, poly_order)
+        vis1_poly_xx, vis1_poly_yy = bp.medfilt_timedrift(vis1, time, on,
+                kernel_size=51)
+
+        #vis1_poly_xx = np.poly1d(
+        #        np.polyfit(x_axis_norm[good[:,0]], vis1[:, 0][good[:,0]], poly_order))
+        #vis1_poly_yy = np.poly1d(
+        #        np.polyfit(x_axis_norm[good[:,1]], vis1[:, 1][good[:,1]], poly_order))
 
         #vis1 = np.ma.array(medfilt(vis1.data, kernel_size=(11, 1)), mask = vis1.mask)
 
-        _l = axhh.plot(x_axis, vis1[:,0], '-', lw=1, label = label, drawstyle='steps-mid')
-        axhh.plot(x_axis, vis1_poly_xx(x_axis), '-', c=_l[0].get_color(), lw=2.0)
-        _l = axvv.plot(x_axis, vis1[:,1], '-', lw=1, drawstyle='steps-mid')
-        axvv.plot(x_axis, vis1_poly_yy(x_axis), '-', c=_l[0].get_color(), lw=2.0)
+        _l = axhh.plot(x_axis[on], vis1[:,0], '-',lw=0.1) #,drawstyle='steps-mid')
+        axhh.plot(x_axis, vis1_poly_xx, '-', c=_l[0].get_color(), lw=2.0,
+                zorder=1000,label=label)
+        _l = axvv.plot(x_axis[on], vis1[:,1], '-',lw=0.1) #,drawstyle='steps-mid')
+        axvv.plot(x_axis, vis1_poly_yy, '-', c=_l[0].get_color(), lw=2.0,
+                zorder=1000)
 
         axhh.axhline(1, 0, 1, c='k', lw=1.5, ls='--')
         axvv.axhline(1, 0, 1, c='k', lw=1.5, ls='--')

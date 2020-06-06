@@ -10,8 +10,9 @@ Inheritance diagram
 
 import warnings
 import numpy as np
-import timestream_task
-from tlpipe.container.timestream import Timestream
+from fpipe.timestream import timestream_task
+#from tlpipe.container.timestream import Timestream
+from fpipe.container.timestream import FAST_Timestream as Timestream
 from caput import mpiutil
 from caput import mpiarray
 from tlpipe.utils.np_util import unique, average
@@ -32,8 +33,8 @@ class Rebin(timestream_task.TimestreamTask):
     prefix = 'rb_'
 
     def process(self, ts):
-        print ts.vis.shape
-        print ts['ra'].shape
+        #print ts.vis.shape
+        #print ts['ra'].shape
 
         assert isinstance(ts, Timestream), '%s only works for Timestream object' % self.__class__.__name__
 
@@ -54,6 +55,8 @@ class Rebin(timestream_task.TimestreamTask):
             vis_mask= np.zeros((nt, bin_number)+ts.local_vis.shape[2:], dtype=ts.vis_mask.dtype) # all False
 
             # average over frequency
+            dfreq_raw = ts.freq[1] - ts.freq[0]
+            nfreq_raw = ts.freq.shape[0]
             for idx in xrange(bin_number):
                 inds, weight = unique(repeat_inds[start[idx]:end[idx]], return_counts=True)
                 # rebin freq
@@ -73,6 +76,9 @@ class Rebin(timestream_task.TimestreamTask):
             axis_order = ts.main_axes_ordered_datasets['vis']
             ts.create_main_axis_ordered_dataset(axis_order, 'vis_mask', vis_mask, axis_order, recreate=True, copy_attrs=True)
             ts.create_freq_ordered_dataset('freq', freq, recreate=True, copy_attrs=True, check_align=True)
+
+            print 'freq resolution reduced from %s to %f MHz (%d - %d)'%(
+                   dfreq_raw,  freq[1] - freq[0], nfreq_raw, freq.shape[0])
 
             # for other freq_axis datasets
             for name in ts.freq_ordered_datasets.keys():
