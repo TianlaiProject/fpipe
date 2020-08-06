@@ -7,6 +7,7 @@ from matplotlib.ticker import MaxNLocator,ScalarFormatter
 
 import data_format
 import h5py
+from fpipe.utils import coord
 
 from astropy import units as u
 from astropy.time import Time
@@ -31,7 +32,7 @@ _Location = EarthLocation.from_geodetic(_Lon, _Lat)
 
 
 
-def convert_to_tl(data_path, data_file, output_path, alt, az, feed_rotation=0,
+def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=0,
                   beam_list = [0, ], block_list = [0, 1],
                   fmin=None, fmax=None, degrade_freq_resol=None,
                   noise_cal = [8, 1, 0]):
@@ -48,6 +49,7 @@ def convert_to_tl(data_path, data_file, output_path, alt, az, feed_rotation=0,
         beam_n = len(beam_list)
         for ii in range(beam_n):
         
+            print fmin, fmax
             fdata = data_format.FASTfits_Spec(data_file_list[ii], fmin, fmax)
             fdata.flag_cal(*noise_cal)
             if degrade_freq_resol is not None:
@@ -77,12 +79,20 @@ def convert_to_tl(data_path, data_file, output_path, alt, az, feed_rotation=0,
                 df.attrs['nfreq'] = nfreq
                 df.attrs['freqstart'] = fdata.freq[0]
                 df.attrs['freqstep'] = fdata.freq[1] - fdata.freq[0]
+                print 'Frequency range [%8.4f, %8.4f] MHz'%(
+                        fdata.freq[0], fdata.freq[-1])
+                print 'Frequency %8.4f MHz x %d'%(
+                        fdata.freq[1] - fdata.freq[0], nfreq)
 
                 ## get ra dec according to meridian scan
                 #ra, dec = get_pointing_meridian_scan(fdata.time, dec0, 
                 #        time_format='unix', feed_rotation=feed_rotation)
-                ra, dec = get_pointing_meridian_scan(fdata.time, alt, az,
-                        time_format='unix', feed_rotation=feed_rotation)
+                #ra, dec = get_pointing_meridian_scan(fdata.time, alt, az,
+                #        time_format='unix', feed_rotation=feed_rotation)
+                alt0 = alt_f(fdata.time)
+                az0  = az_f(fdata.time)
+                az, alt, ra, dec = coord.get_pointing_any_scan(fdata.time, 
+                        alt0, az0, time_format='unix', feed_rotation=feed_rotation)
 
                 cal_on = fdata.cal_on[:, None] * np.ones(beam_n)[None, :]
                 cal_on = cal_on.astype('bool')
