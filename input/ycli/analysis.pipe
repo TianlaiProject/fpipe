@@ -1,0 +1,65 @@
+# -*- mode: python; -*-
+#
+from fpipe.timestream import bandpass_cal, freq_rebin
+from fpipe.plot import plot_waterfall
+
+from tlpipe.timestream import dispatch
+from tlpipe.timestream import rfi_flagging
+from tlpipe.timestream import sir_operate
+
+import os
+
+file_st = 1 #int(os.getenv('FILE_ST'))
+file_ed = 1 #file_st + 1
+
+data_base = '/scratch/users/ycli/fanalysis/'
+#DATA_Key = '0531'
+DATA_Key = '0520'
+
+if DATA_Key == '0531':
+    file_temp = 'SDSS_N_2.5/20200508/SDSS_N_2.5_arcdrift%04d-%04d_1050-1150MHz.h5'
+elif DATA_Key == '0520':
+    file_temp = 'SDSS_N_2.5/20200508/SDSS_N_2.5_arcdrift%04d-%04d_1050-1150MHz.h5'
+
+input_files = [file_temp%(i, i) for i in range(file_st, file_ed + 1)]
+prefix = 'raw/'
+
+pipe_tasks = []
+pipe_outdir = data_base 
+#pipe_logging = 'error'
+pipe_logging = 'info'
+pipe_copy = False
+
+feed_select = range(1, 20)
+#bad_feed = [14, 16, 19]
+#for x in bad_feed:
+#    feed_select.remove(x)
+
+#pipe_tasks.append(bandpass_cal.Bandpass_Cal)
+
+pipe_tasks.append(plot_waterfall.PlotSpectrum)
+
+bpcal_input_files  = ['%s/%s'%(prefix, f) for f in input_files]
+bpcal_output_files = ['bpcal/%s'%f for f in input_files]
+bpcal_noise_on_time = 1
+bpcal_bandpass_smooth = 101
+bpcal_pol_select = (0, 2)
+#bpcal_freq_select = (5000, -1000)
+#bpcal_freq_select = (5000, 7048)
+#bpcal_feed_select = [1,]
+bpcal_main_data = 'vis'
+bpcal_bad_freq_list = None #bad_freq_list # [[0, 50], [595, 605], [930, 955]] #bad_freq
+bpcal_bad_time_list = None #bad_time_list # [[0, 120], [3150, 3180], [3750, 3820]]
+bpcal_Tnoise_file = '/idia/users/ycli/fdata/fast_nd/ROACH_output/Tnosie_M_low.h5'
+bpcal_plot_spec = False
+
+psp_input_files = ['bpcal/%s'%(f,) for f in input_files]
+psp_feed_select = [1,]
+psp_output_files = ['pts/sp', ]
+psp_plot_index = False
+psp_noise_on_time = 1
+#psp_timevars_poly = 4
+#psp_kernel_size = 51
+psp_ymax = 300
+psp_ymin = 25
+
