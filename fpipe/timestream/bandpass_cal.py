@@ -312,6 +312,7 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
             ax.plot(ts['freq'][:], np.ma.median(vis, axis=0)[:, 1], 'g')
             ax.set_xlim(xmin=ts['freq'][:].min(),xmax=ts['freq'][:].max())
             ax.set_ylim(ymin=15, ymax=25)
+            #ax.set_ylim(ymin=15, ymax=80)
 
         if self.params['T_sys'] is not None:
             T_sys = self.params['T_sys']

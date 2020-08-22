@@ -89,7 +89,7 @@ class FASTfits_Spec(object):
         if fmin is None: fmin = -1
         if fmax is None: fmax = 1.e20
         
-        _good = (freq >= fmin) * (freq <= fmax)
+        _good = (freq >= fmin) * (freq < fmax)
         _good_st = np.argwhere(_good)[ 0, 0]
         _good_ed = np.argwhere(_good)[-1, 0]
         #self.freq = self.freq[_good_st:_good_ed]
