@@ -64,8 +64,8 @@ class Normal_Tsys(timestream_task.TimestreamTask):
         vis1, on = get_Ncal(vis1, vis_mask, on, on_t)
         bandpass = np.ma.median(vis1, axis=0)
         # smooth the bandpass to remove some RFI
-        bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=51)
-        bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=51)
+        bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=101)
+        bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=101)
         bandpass = np.ma.filled(bandpass, 0)
         bandpass[bandpass==0] = np.inf
 

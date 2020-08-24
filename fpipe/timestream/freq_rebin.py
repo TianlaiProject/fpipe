@@ -27,6 +27,7 @@ class Rebin(timestream_task.TimestreamTask):
     """
 
     params_init = {
+                    'bin_combine_number': None, 
                     'bin_number': 16,
                   }
 
@@ -45,6 +46,10 @@ class Rebin(timestream_task.TimestreamTask):
         #nt = len(ts.time)
         nt = len(ts['sec1970'][:])
         nfreq = len(ts.freq)
+        bin_combine_number = self.params['bin_combine_number']
+        if bin_combine_number is not None:
+            bin_number = nfreq // bin_combine_number
+
         if bin_number >= nfreq:
             warnings.warn('The number of bins can not exceed the number of frequencies, do nothing')
         else:

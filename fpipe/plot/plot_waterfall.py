@@ -951,8 +951,8 @@ class PlotSpectrum(PlotTimeStream):
         print "global index %2d [m%03d]"%(gi, bl[0]-1)
         freq_indx = np.arange(vis.shape[1])
         freq = ts['freq'][:] * 1.e-3
-        #self.x_label = r'$\nu$ / GHz'
-        self.x_label = 'f [GHz]'
+        self.x_label = r'$\nu$ / GHz'
+        #self.x_label = 'f [GHz]'
 
         bad_freq = np.all(vis_mask, axis=(0, 2))
         bad_time = np.all(vis_mask, axis=(1, 2))
@@ -1039,7 +1039,7 @@ class PlotSpectrum(PlotTimeStream):
         axhh.minorticks_on()
         axhh.tick_params(length=4, width=1, direction='in')
         axhh.tick_params(which='minor', length=2, width=1, direction='in')
-        axhh.legend(title=self.params['legend_title'])
+        axhh.legend(title=self.params['legend_title'], ncol=6)
         axhh.set_ylabel('HH Polarization')
 
         #axvv.set_xlabel(r'$({\rm time} - {\rm UT}\quad %s\,) [{\rm hour}]$'%t_start)
