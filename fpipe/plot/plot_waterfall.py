@@ -160,7 +160,8 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
                 x_label = 'R.A.' 
                 print 'RA range [%6.2f, %6.2f]'%( x_axis.min(), x_axis.max())
             else:
-                x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+                time = ts['sec1970'] + ts.attrs['sec1970']
+                x_axis = [ datetime.fromtimestamp(s) for s in time]
                 x_label = 'UTC %s' % x_axis[0].date()
                 # convert datetime objects to the correct format for 
                 # matplotlib to work with
@@ -529,7 +530,8 @@ class PlotVvsTime(PlotTimeStream):
                 self.x_label = 'R.A.' 
                 print 'RA range %f - %f'%(x_axis.min(), x_axis.max())
             else:
-                x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+                time = ts['sec1970'] + ts.attrs['sec1970']
+                x_axis = [ datetime.fromtimestamp(s) for s in time]
                 self.x_label = '%s UTC' % x_axis[0].date()
                 x_axis = mdates.date2num(x_axis)
             #if xmin is not None:
@@ -700,7 +702,8 @@ class PlotNcalVSTime(PlotVvsTime):
                 x_axis = ts['ra'][:, gi]
                 self.x_label = 'R.A.' 
             else:
-                x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+                time = ts['sec1970'] + ts.attrs['sec1970']
+                x_axis = [ datetime.fromtimestamp(s) for s in time]
                 self.x_label = '%s UTC' % x_axis[0].date()
                 x_axis = mdates.date2num(x_axis)
             if xmin is not None:
@@ -886,7 +889,8 @@ class PlotPointingvsTime(PlotTimeStream):
             self.x_label = 'time index'
         else:
             y_label = r'$\nu$ / GHz'
-            x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+            time = ts['sec1970'] + ts.attrs['sec1970']
+            x_axis = [ datetime.fromtimestamp(s) for s in time]
             self.x_label = '%s' % x_axis[0].date()
             x_axis = mdates.date2num(x_axis)
 
