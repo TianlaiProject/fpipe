@@ -138,6 +138,7 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
     params_init = {
 
             'save_cov' : False,
+            'diag_cov' : True,
             'threshold' : 1.e-3,
             }
 
@@ -179,6 +180,7 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
                 _i += [int(x / np.prod(shp[i+1:])),]
             return tuple(_i)
 
+        diag_cov  = self.params['diag_cov']
         threshold = self.params['threshold']
         task_n = np.prod(self.map_shp[:-2])
         for task_ind in mpiutil.mpirange(task_n):
@@ -190,15 +192,17 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
 
             map_shp = self.map_shp[-2:]
             _dirty_map = np.zeros(map_shp, dtype=__dtype__)
-            _cov_inv = np.zeros(map_shp * 2, dtype=__dtype__)
+            if diag_cov:
+                _cov_inv = np.zeros(map_shp, dtype=__dtype__)
+            else:
+                _cov_inv = np.zeros(map_shp * 2, dtype=__dtype__)
             for ii, df in enumerate(self.df_in):
                 _dirty_map += df['dirty_map'][indx + (slice(None), )]
                 self.read_block_from_dset(ii, 'cov_inv', indx, _cov_inv)
-
                 #_cov_inv   += df['cov_inv'][indx + (slice(None), )]
 
             self.df_out[-1]['dirty_map' ][indx + (slice(None), )] = _dirty_map
-            clean_map, noise_diag = make_cleanmap(_dirty_map, _cov_inv, threshold)
+            clean_map, noise_diag = make_cleanmap(_dirty_map,_cov_inv,diag_cov,threshold)
             self.df_out[-1]['clean_map' ][indx + (slice(None), )] = clean_map
             self.df_out[-1]['noise_diag'][indx + (slice(None), )] = noise_diag
             del _cov_inv
@@ -214,10 +218,53 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
         mpiutil.barrier()
         super(CleanMap, self).finish()
 
-def make_cleanmap(dirty_map, cov_inv_block, threshold=1.e-5):
+def make_cleanmap(dirty_map, cov_inv_block, diag_cov=False, threshold=1.e-5):
 
     map_shp = dirty_map.shape
     dirty_map.shape = (np.prod(map_shp), )
+    if diag_cov:
+        cov_inv_block.shape = (np.prod(map_shp), )
+        cov_inv_block[cov_inv_block==0] = np.inf
+        noise_diag = 1./cov_inv_block
+        clean_map = dirty_map.copy() / cov_inv_block
+    else:
+        cov_inv_block.shape = (np.prod(map_shp), np.prod(map_shp))
+
+        cov_inv_diag = np.diag(cov_inv_block).copy()
+        cov_inv_bad = cov_inv_diag == 0
+        cov_inv_diag_max = cov_inv_diag.max()
+        if np.all(cov_inv_diag == 0):
+            logger.error('Singular Noise Matrix, ignore')
+            noise = np.zeros_like(cov_inv_block)
+        else:
+            cov_inv_diag_min = cov_inv_diag[cov_inv_diag!=0].min()
+            logger.info('cov inv diag max %e, min %e'%(cov_inv_diag_max, cov_inv_diag_min))
+            #cov_inv_diag[cov_inv_diag!=0] = cov_inv_diag_max * 0.1
+            cov_inv_diag[:] = cov_inv_diag_max * threshold
+            #cov_inv_diag[:] = threshold
+
+            cov_inv_block += np.eye(np.prod(map_shp)) * cov_inv_diag[:, None]
+            #noise = linalg.pinv(cov_inv_block, rcond=threshold)
+            noise = linalg.inv(cov_inv_block)
+            noise[cov_inv_bad] = 0.
+
+        clean_map = np.dot(noise, dirty_map)
+        noise_diag = np.diag(noise)
+
+        del noise
+        gc.collect()
+
+    clean_map.shape = map_shp
+    noise_diag.shape = map_shp
+
+
+    return clean_map, noise_diag
+
+def make_cleanmap_old(dirty_map, cov_inv_block, threshold=1.e-5):
+
+    map_shp = dirty_map.shape
+    dirty_map.shape = (np.prod(map_shp), )
+
     cov_inv_block.shape = (np.prod(map_shp), np.prod(map_shp))
 
     #cov_inv_block[cov_inv_block<1.e-5] = 0.

@@ -13,6 +13,35 @@ from scipy import interpolate
 
 import matplotlib.pyplot as plt
 
+class Apply_EtaA(timestream_task.TimestreamTask):
+
+    params_init = {
+            'eta_A' : None,
+            }
+
+    prefix = 'etaA_'
+
+    def process(self, ts):
+
+        show_progress = self.params['show_progress']
+        progress_step = self.params['progress_step']
+
+
+        func = ts.bl_data_operate
+        func(self.cal_etaA, full_data=True, copy_data=False, 
+                show_progress=show_progress, 
+                progress_step=progress_step, keep_dist_axis=False)
+
+        return super(Apply_EtaA, self).process(ts)
+
+    def cal_etaA(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        eta_A = self.params['eta_A']
+        if eta_A is not None:
+            print 'eta A cal'
+            #factor = np.pi ** 2. / 4. / np.log(2.)
+            vis /= eta_A[gi] #* factor
+
 
 class Normal_Tsys(timestream_task.TimestreamTask):
 
@@ -246,7 +275,7 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
         # take the median value of each channel as the bandpass
         bandpass = np.ma.median(vis1, axis=0)
         if plot_spec:
-            fig = plt.figure(figsize=(12, 4))
+            fig = plt.figure(figsize=(6, 4))
             ax  = fig.add_axes([0.06, 0.1, 0.90, 0.8])
             ax.plot(ts['freq'][:], bandpass[:, 0], 'r', label='bandpass X')
             ax.plot(ts['freq'][:], bandpass[:, 1], 'b', label='bandpass Y')
@@ -258,7 +287,8 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
         if plot_spec:
             ax.plot(ts['freq'][:], bandpass[:, 0], 'w')
             ax.plot(ts['freq'][:], bandpass[:, 1], 'w')
-            ax.set_ylim(ymin=0, ymax=25)
+            ax.legend()
+            ax.set_ylim(ymin=2, ymax=12)
             ax.set_xlim(xmin=ts['freq'][:].min(),xmax=ts['freq'][:].max())
 
         bandpass = np.ma.filled(bandpass, 0)

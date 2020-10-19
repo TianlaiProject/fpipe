@@ -415,7 +415,7 @@ def get_nvss_radec(nvss_path, nvss_range):
 
     _sel = np.zeros(data['RA'].shape[0], dtype ='bool')
     for _nvss_range in nvss_range:
-        print _nvss_range
+        #print _nvss_range
 
         ra_min, ra_max, dec_min, dec_max = _nvss_range
 
@@ -424,7 +424,7 @@ def get_nvss_radec(nvss_path, nvss_range):
         sel *= data['DEC'] > dec_min
         sel *= data['DEC'] < dec_max
 
-        print np.sum(sel)
+        #print np.sum(sel)
 
         _sel = _sel + sel
 

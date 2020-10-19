@@ -47,7 +47,7 @@ def load_maps_npy(dm_path, dm_file):
 def load_maps(dm_path, dm_file, name='clean_map'):
 
     with h5.File(dm_path+dm_file, 'r') as f:
-        print f.keys()
+        #print f.keys()
         imap = al.load_h5(f, name)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
         #imap = al.make_vect(al.load_h5(f, name))
@@ -96,7 +96,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         logger.info( ('%s '* len(keys))%keys )
         imap = al.load_h5(f, map_type)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
-        print imap.info
+        #print imap.info
         
         freq = imap.get_axis('freq')
         ra   = imap.get_axis( 'ra')
@@ -112,7 +112,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         imap = fgrm.make_noise_factorizable(imap)
 
     if indx is None:
-        print 'average over freq'
+        #print 'average over freq'
         imap = np.ma.masked_equal(imap, 0)
         imap = np.ma.masked_invalid(imap)
         imap = np.ma.mean(imap, axis=0)
@@ -226,11 +226,11 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             _s = PathEffects.withStroke(linewidth=5, foreground='w', alpha=0.8)
             _t = ax.annotate('%s\n[%7.4f Jy]'%(_id[i].replace('NVSS', ''), 
                 _flx[i]/1000.), (_ra[i], _dec[i]-0.01), 
-                textcoords='offset points', xytext = (30, 0),
+                textcoords='offset points', xytext = (10, 10),
                 arrowprops=dict(edgecolor='k',facecolor='k', arrowstyle='-|>', 
-                        linewidth=2, 
-                        connectionstyle="arc,angleA=180,armA=80,rad=20"),
-                size=10, #path_effects=[_s]
+                        linewidth=1, 
+                        connectionstyle="arc,angleA=180,armA=80,rad=10"),
+                size=8, #path_effects=[_s]
                 )
             _t.arrow_patch.set_path_effects([_s])
 
@@ -579,3 +579,33 @@ def plot_2dps(ps_path, ps_name_list, figsize=(16, 4),title='',
     fig.colorbar(im, ax=ax, cax=cax)
     cax.minorticks_off()
     cax.set_ylabel(r'$P(k)$')
+
+def plot_map_combined(map_path, map_names, map_type='clean_map', indx=(0,),
+                      smoothing=True, sigma=2, vmin=None, vmax=None,
+                      nvss_path=None, figsize=(25, 12)):
+
+    nmaps = len(map_names)
+    fig = plt.figure(figsize=figsize)
+    gs  = gridspec.GridSpec(nmaps , 1, left=0.055, bottom=0.045,
+                             right=0.95, top=0.90, wspace=0.0, hspace=0.01)
+
+    cax = fig.add_axes([0.65, 0.02, 0.30, 0.015])
+    for ii in range(nmaps):
+
+        ax = fig.add_subplot(gs[ii, 0])
+        fig_axes = [fig, ax, cax]
+        xlim, ylim, v = show_map(map_path + map_names[ii], map_type, indx = indx,
+                                    vmin=vmin, vmax=vmax,
+                                    sigma=sigma, fig_axes=fig_axes, smoothing=smoothing,
+                                    mK=False, nvss_path=nvss_path)
+        xmin, xmax = xlim
+        xx = np.arange(int(xmax-xmin) + 1)
+        ax.set_xticks(xx + xmin)
+        xx_label = [r'$+%d$'%x for x in xx]
+        xx_label[0] = r'$%6.2f$'%xmin
+        ax.set_xticklabels(xx_label)
+
+    fig.text(0.40, 0.01/12.*figsize[1], r'R.A. (J2000) [$^\circ$]', fontsize=20)
+    fig.text(0.02, 0.55,  r'Dec. (J2000) [$^\circ$]', rotation='vertical', fontsize=20)
+
+    return fig

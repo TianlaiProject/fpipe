@@ -1,0 +1,66 @@
+# -*- mode: python; -*-
+#
+
+from fpipe.map import dirtymap, cleanmap
+import os
+
+block_list = [[1, 2], [2, 4], [3, 5], [5, 6], [6, 7], [7, 8]]
+
+kk = int(os.getenv('KK'))
+file_st = block_list[kk][0]
+file_ed = block_list[kk][1]
+
+data_base = '/scratch/users/ycli/fanalysis/'
+
+DATA_Key = '200508'
+fslice = '_1050-1150MHz'
+
+file_temp = 'SDSS_N_2.5/20200508-01/SDSS_N_2.5_arcdrift%04d-%04d%s.h5'
+FILE_LIST = [file_temp%(i, i, fslice) for i in range(file_st, file_ed + 1)]
+
+pipe_tasks = []
+pipe_outdir = data_base 
+#pipe_logging = 'error'
+pipe_logging = 'info'
+pipe_copy = False
+
+feed_select = range(1, 20)
+bad_feed = [] #[14, 16, 19]
+for x in bad_feed:
+    feed_select.remove(x)
+
+pipe_tasks.append((dirtymap.MakeMap_CombineAll, 'dmall_'))
+pipe_tasks.append((cleanmap.CleanMap, 'cmAll_'))
+
+dra = 0.013988259483422007 * 720 * (kk - 2)
+ra_centre = 153.72 + dra
+
+map_name = '%s_RAcentre%5.2f'%(DATA_Key, ra_centre)
+input_files = ['rb64/%s'%f for f in FILE_LIST]
+
+suffix = '%s'%fslice
+
+dmall_field_centre = (ra_centre, 26.67)
+dmall_map_shape = [600, 28]
+dmall_pixel_spacing = 3./60./3.
+dmall_tblock_len = 256 #1280
+dmall_input_files  = input_files
+dmall_output_files = ['map/dm_%s%s'%(map_name, suffix),]
+dmall_data_sets    = 'vis'
+dmall_freq_select  = (0, None)
+dmall_feed_select  = feed_select
+dmall_pol_select   = (0, 2)
+dmall_noise_weight = True
+dmall_deweight_time_mean = True
+dmall_save_cov = True
+dmall_diag_cov = True
+dmall_beam_fwhm_at21cm = 2.94/60.
+dmall_beam_cut  = None #0.6
+dmall_save_localHI = True
+
+
+suffix += '_vis'
+cmAll_input_files  = ['map/dm_%s%s.h5'%(map_name, suffix),]
+cmAll_output_files = ['map/cm_%s%s.h5'%(map_name, suffix),]
+cmAll_threshold = 10
+cmAll_diag_cov = True

@@ -1,0 +1,69 @@
+# -*- mode: python; -*-
+#
+
+from meerKAT_sim.sim import survey_sim
+import numpy as np
+import os
+
+#result = '20mode'
+result = os.getenv('RESULT')
+
+FAST_results = {
+    #                    fk10MHz x 100  alpha          beta
+    '01mode': np.array([[1.16,  0.92], [1.36,  1.35], [0.51,  0.53]]),
+    '02mode': np.array([[1.41,  1.27], [1.14,  1.16], [0.57,  0.62]]),
+    '03mode': np.array([[0.74,  0.76], [1.05,  1.06], [0.61,  0.65]]),
+    '04mode': np.array([[0.58,  0.74], [0.99,  1.00], [0.61,  0.64]]),
+    '05mode': np.array([[0.56,  0.72], [0.97,  0.97], [0.61,  0.63]]),
+    '10mode': np.array([[0.38,  0.48], [0.96,  0.96], [0.61,  0.60]]),
+    '15mode': np.array([[0.25,  0.26], [0.92,  0.92], [0.58,  0.56]]),
+    '20mode': np.array([[0.18,  0.17], [0.77,  0.79], [0.65,  0.58]]),
+    '25mode': np.array([[0.10,  0.11], [0.73,  0.74], [0.74,  0.63]]),
+    '30mode': np.array([[0.06,  0.07], [0.64,  0.65], [0.84,  0.72]]),
+}
+
+data_base = '/scratch/users/ycli/fanalysis/sim/'
+
+#f0, alpha, beta = np.mean(FAST_results[result], axis=1)
+#sim_type = 'wigglez_map_hi_wn20_fn%ss'%result
+f0, alpha, beta = 0, 0, 0
+sim_type = 'wigglez_map_hi'
+
+
+pipe_tasks = []
+pipe_outdir = data_base + '%s/'%sim_type
+pipe_logging = 'info'
+pipe_feedback = 2
+pipe_copy = False
+
+pipe_tasks.append(survey_sim.SurveySimToMap)
+
+ssimm_prefix = 'F19'
+
+ssimm_survey_mode = 'DriftScan'
+ssimm_schedule_file = '/scratch/users/ycli/fanalysis/sim/input/drift_fast_SDSS.dat'
+ssimm_ant_file = '/scratch/users/ycli/fanalysis/sim/input/fast.dat'
+
+ssimm_multibeam = True
+
+ssimm_T_rec = 0. #20. #25./(30.)**0.5
+
+ssimm_freq = np.arange(1050, 1150, 0.5)
+
+ssimm_HI_model = data_base + '/wigglez_cube/Equator_cube_ideal.h5'
+#ssimm_HI_model_type = 'raw'
+ssimm_HI_model_type = 'withbeam'
+
+ssimm_mock_n = 20
+
+# including 1/f noise by setting ssim_fnoise=True
+ssimm_fnoise = False
+ssimm_f0     = f0 * 1.e-2
+ssimm_alpha  = alpha
+ssimm_beta   = beta
+ssimm_delta_nu = 10. #MHz
+
+ssimm_field_centre  = (150., 26.,)
+ssimm_pixel_spacing = 3./60.
+ssimm_map_shape     = (1100, 90)
+
