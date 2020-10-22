@@ -1,0 +1,35 @@
+# -*- mode: python; -*-
+#
+
+from fpipe.ps import power_spectrum
+import numpy as np
+import os
+
+data_base = '/scratch/users/ycli/fanalysis/sim/'
+
+sim_type = os.getenv('SIM_TYPE')
+
+pipe_tasks = []
+pipe_outdir = data_base
+pipe_logging = 'info'
+pipe_feedback = 2
+pipe_copy = False
+
+mock_n = 20
+tmp_name = '%s/sim_mock%03d_F19_DriftScan_ideal_withbeam.h5'
+
+pipe_tasks.append(power_spectrum.AutoPS_OneByOne)
+
+aps1b1_input_files  = [tmp_name%(sim_type, i) for i in range(mock_n)]
+aps1b1_output_files = ['ps/%s.h5'%sim_type,]
+
+aps1b1_kmin = 5.e-2
+aps1b1_kmax = 1.e0
+aps1b1_knum = 20
+aps1b1_kbin_x = np.logspace(-2,  0, 18)
+aps1b1_kbin_y = np.logspace(-2,  0, 18)
+aps1b1_logk = True
+aps1b1_map_key =    ['clean_map', ] * 2
+aps1b1_weight_key = [None, ] * 2
+aps1b1_nonorm = False
+aps1b1_unitless = False

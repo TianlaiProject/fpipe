@@ -1,7 +1,10 @@
 import numpy as np
 import scipy as sp
 import scipy.ndimage
+import dask.array as da
 #from scipy.interpolate import interp1d
+from scipy.interpolate import NearestNDInterpolator
+from scipy.interpolate.rbf import Rbf
 from fpipe.map import algebra
 #from meerKAT_utils import units
 #from meerKAT_utils import cosmology as cosmo
@@ -16,7 +19,178 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+Rz = lambda th: np.array([[ np.cos(th), -np.sin(th),           0],
+                          [ np.sin(th),  np.cos(th),           0],
+                          [          0,           0,           1]])
+Ry = lambda th: np.array([[ np.cos(th),           0,  np.sin(th)],
+                          [          0,           1,           0],
+                          [-np.sin(th),           0,  np.cos(th)]])
+
+def centering_to_fieldcenter(ra, dec):
+
+    shp = ra.shape
+
+    ra_c  = 0.5 * (ra.min() + ra.max())
+    dec_c = 90. - 0.5 * (dec.min() + dec.max())
+
+    alpha = ra
+    delta = dec
+    alpha = np.deg2rad(alpha)
+    delta = np.deg2rad(delta)
+    x = np.cos(alpha) * np.cos(delta)
+    y = np.cos(delta) * np.sin(alpha)
+    z = np.sin(delta)
+    xyz = np.array([x, y, z])
+
+    xyz.shape = (3, -1)
+    xyz = np.dot(xyz.T, Rz( ra_c * np.pi/180.)).T
+    xyz = np.dot(xyz.T, Ry(dec_c * np.pi/180.)).T
+    xyz = np.dot(xyz.T, Rz(          np.pi/2.)).T
+
+    x, y, z = xyz[0], xyz[1], xyz[2]
+
+    h   = np.hypot(x, y)
+    ra  = np.rad2deg(np.arctan2(y, x))
+    dec = np.rad2deg(np.arctan2(z, h))
+
+    ra.shape = shp
+    dec.shape = shp
+
+    return ra, dec
+
 def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1, 
+        mode='constant'):
+    r"""Project from freq, ra, dec into physical coordinates
+
+    Parameters
+    ----------
+    input_array: np.ndarray
+        The freq, ra, dec map
+
+    Returns
+    -------
+    cube: np.ndarray
+        The cube projected back into physical coordinates
+
+    """
+    if not hasattr(pad, '__iter__'):
+        pad = [pad, pad, pad]
+    pad = np.array(pad)
+
+    freq_axis = input_array.get_axis('freq') #/ 1.e6
+    ra_axis   = input_array.get_axis('ra')
+    dec_axis  = input_array.get_axis('dec')
+
+    freq_axis = np.pad(freq_axis, 1, mode='edge')
+    ra_axis   = np.pad(ra_axis,   1, mode='edge')
+    dec_axis  = np.pad(dec_axis,  1, mode='edge')
+    freq_axis[ 0] -= input_array.info['freq_delta']
+    freq_axis[-1] += input_array.info['freq_delta']
+    ra_axis[ 0]   -= input_array.info['ra_delta']
+    ra_axis[-1]   += input_array.info['ra_delta']
+    dec_axis[ 0]  -= input_array.info['dec_delta']
+    dec_axis[-1]  += input_array.info['dec_delta']
+    input_array = np.pad(input_array, 1, mode='constant')
+
+    _dec, _ra = np.meshgrid(dec_axis, ra_axis)
+    _ra, _dec = centering_to_fieldcenter(_ra, _dec)
+
+    # convert the freq, ra and dec axis to physical distance
+    z_axis = __nu21__ / freq_axis - 1.0
+    d_axis = (cosmology.comoving_transverse_distance(z_axis) * cosmology.h).value
+    c_axis = (cosmology.comoving_distance(z_axis) * cosmology.h).value
+
+    d_axis = d_axis[:, None, None]
+    c_axis = c_axis[:, None, None]
+    _ra    = _ra[None,  :, :]
+    _dec   = _dec[None, :, :]
+
+    xx = d_axis * np.cos(np.deg2rad(_ra)) * np.cos(np.deg2rad(_dec))
+    yy = d_axis * np.sin(np.deg2rad(_ra)) * np.cos(np.deg2rad(_dec))
+    zz = c_axis * np.sin(np.deg2rad(_dec)) 
+
+    xx = xx.flatten()[:, None]
+    yy = yy.flatten()[:, None]
+    zz = zz.flatten()[:, None]
+    dd = input_array.flatten()[:, None]
+    coord = np.concatenate([xx, yy, zz], axis=1)
+    #input_array_f = NearestNDInterpolator(coord, input_array.flatten())
+    #input_array_f = Rbf(xx, yy, zz, input_array.flatten()[:, None], function='linear')
+
+    (numz, numx, numy) = input_array.shape
+
+    c1, c2 = zz.min(), zz.max()
+    c_center = 0.5 * (c1 + c2)
+
+    phys_dim = np.array([c2 - c1, xx.max() - xx.min(), yy.max() - yy.min()])
+
+    n = np.array([numz, numx, numy])
+
+    # Enlarge cube size by `pad` in each dimension, so raytraced cube
+    # sits exactly within the gridded points.
+    phys_dim = phys_dim * (n + pad).astype(float) / n.astype(float)
+    c1 = c_center - (c_center - c1) * (n[0] + pad[0]) / float(n[0])
+    c2 = c_center + (c2 - c_center) * (n[0] + pad[0]) / float(n[0])
+    n = n + pad
+    # now multiply by scaling for a finer sub-grid
+    n = (refinement * n).astype('int')
+
+    if feedback > 0:
+        msg = "converting from obs. to physical coord\n"\
+               "refinement=%s, pad=(%s, %s, %s)\n "\
+               "(%d, %d, %d)->(%f to %f) x %f x %f\n "\
+               "(%d, %d, %d) (h^-1 cMpc)^3\n" % \
+                       ((refinement, ) +  tuple(pad) + (
+                        numz, numx, numy, c1, c2, 
+                        phys_dim[1], phys_dim[2], 
+                        n[0], n[1], n[2]))
+        msg += "dx = %f, dy = %f, dz = %f"%(abs(phys_dim[1]) / float(n[1] - 1),
+                                            abs(phys_dim[2]) / float(n[2] - 1),
+                                            abs(c2 - c1) / float(n[0] - 1) )
+        logger.debug(msg)
+        print msg
+
+    # this is wasteful in memory, but numpy can be pickled
+    phys_map = algebra.make_vect(np.zeros(n), axis_names=('freq', 'ra', 'dec'))
+
+    # TODO: should this be more sophisticated? N-1 or N?
+    info = {}
+    info['axes'] = ('freq', 'ra', 'dec')
+    info['type'] = 'vect'
+    info['freq_delta'] = abs(c2 - c1) / float(n[0] - 1)
+    info['freq_centre'] = c1 + info['freq_delta'] * float(n[0] // 2)
+    info['ra_delta'] = abs(phys_dim[1]) / float(n[1] - 1)
+    info['ra_centre'] = 0.5 * (xx.max() + xx.min())
+    info['dec_delta'] = abs(phys_dim[2]) / float(n[2] - 1)
+    info['dec_centre'] = 0.5 * (yy.max() + yy.min())
+    phys_map.info = info
+
+    # same as np.linspace(c1, c2, n[0], endpoint=True)
+    radius_axis = phys_map.get_axis("freq")
+    x_axis = phys_map.get_axis("ra")
+    y_axis = phys_map.get_axis("dec")
+
+    _yy, _xx = np.meshgrid(y_axis, x_axis)
+    #dd_f = NearestNDInterpolator(coord, dd)
+
+    for i in range(radius_axis.shape[0]):
+        _zz = radius_axis[i] * np.ones(_yy.shape)
+        _sel  = zz[:, 0] < radius_axis[i] + 1 * info['freq_delta']
+        _sel *= zz[:, 0] > radius_axis[i] - 1 * info['freq_delta']
+        if np.any(_sel):
+            #dd_f = Rbf(xx[_sel], yy[_sel], zz[_sel], dd[_sel], function='linear')
+            dd_f = NearestNDInterpolator(coord[_sel], dd[_sel])
+            phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
+        print i,
+        #phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
+    print
+
+    #phys_map_npy = algebra.make_vect(phys_map_npy, axis_names=('freq', 'ra', 'dec'))
+    #phys_map_npy.info = info
+    return phys_map, info
+
+def physical_grid_old(input_array, refinement=1, pad=2, order=0, feedback=1, 
         mode='constant'):
     r"""Project from freq, ra, dec into physical coordinates
 
@@ -88,6 +262,7 @@ def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1,
                                             abs(phys_dim[2]) / float(n[2] - 1),
                                             abs(c2 - c1) / float(n[0] - 1) )
         logger.debug(msg)
+        print msg
 
 
     # this is wasteful in memory, but numpy can be pickled
