@@ -2,7 +2,7 @@
 from os.path import join, dirname
 #from fpipe.sim import corr21cm
 from cora.signal import corr21cm
-from fpipe.plot import plot_map as pm
+#from fpipe.plot import plot_map as pm
 #from fpipe.sim.gaussianfield import RandomField, fftutil
 from cora.core.gaussianfield import RandomField
 from cora.util import fftutil

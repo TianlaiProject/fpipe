@@ -14,7 +14,7 @@ from fpipe.map import algebra as al
 from fpipe.utils import physical_gridding as gridding
 from fpipe.utils import binning
 
-from meerKAT_sim.ps import pwrspec_estimator as pse, fgrm
+from fpipe.ps import pwrspec_estimator as pse, fgrm
 
 logger = logging.getLogger(__name__)
 

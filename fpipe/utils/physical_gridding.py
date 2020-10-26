@@ -1,7 +1,6 @@
 import numpy as np
 import scipy as sp
 import scipy.ndimage
-import dask.array as da
 from scipy.interpolate import interp1d
 from scipy.interpolate import NearestNDInterpolator
 from scipy.interpolate.rbf import Rbf

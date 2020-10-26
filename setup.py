@@ -7,7 +7,7 @@ from Cython.Distutils import build_ext
 import numpy as np
 
 REQUIRES = ['numpy', 'scipy', 'matplotlib', 'h5py', 'healpy',
-        'pyephem', 'aipy', 'caput', 'cora', 'tlpipe']
+        'pyephem', 'aipy', 'caput', 'cora', ]
 
 # Don't install requirements if on ReadTheDocs build system.
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
@@ -22,15 +22,16 @@ setup(
 
     packages = find_packages(),
 
-    ext_modules=[Extension('fpipe.map._mapmaker', ['fpipe/map/_mapmaker.pyx'], 
-                           include_dirs=[np.get_include()], 
-                           depends=["setup.py",
-                                    "fpipe/map/_mapmaker.pyx"]),
-                 Extension('fpipe.map.cubicspline', ['fpipe/map/cubicspline.pyx'],
-                           include_dirs=[np.get_include()],
-                           depends=["setup.py",
-                                    "fpipe/map/cubicspline.pyx"]),
-                ],
+    #ext_modules=[Extension('fpipe.map._mapmaker', ['fpipe/map/_mapmaker.pyx'], 
+    #                       include_dirs=[np.get_include()], 
+    #                       depends=["setup.py",
+    #                                "fpipe/map/_mapmaker.pyx"]),
+    #             Extension('fpipe.map.cubicspline', ['fpipe/map/cubicspline.pyx'],
+    #                       include_dirs=[np.get_include()],
+    #                       depends=["setup.py",
+    #                                "fpipe/map/cubicspline.pyx"]),
+    #            ],
+    ext_modules = [],
     cmdclass={'build_ext': build_ext},
 
     install_requires = requires,

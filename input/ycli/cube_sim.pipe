@@ -1,0 +1,35 @@
+# -*- mode: python; -*-
+#
+
+from fpipe.sim import survey_sim, cube_sim
+import numpy as np
+import os
+
+data_base = '/project/ycli/fsim/'
+
+pipe_tasks = []
+pipe_outdir = data_base + '/wigglez_cube/'
+pipe_logging = 'info'
+pipe_feedback = 2
+pipe_copy = False
+pipe_tasks.append(cube_sim.CubeSim)
+
+csim_prefix           = 'Equator'
+csim_freq             = np.arange(1050, 1150, 1.0)
+csim_mock_n           = 10
+csim_scenario         = 'ideal'
+csim_refinement       = 1
+
+csim_field_centre     = (150., 26.)
+#csim_map_shape        = [3600, 280]
+#csim_pixel_spacing    = 1./60.
+#csim_map_pad          = 5
+csim_map_shape        = [1200, 90]
+csim_pixel_spacing    = 3./60.
+csim_map_pad          = 1
+
+csim_outfiles = ['raw', 'withbeam']
+#csim_outfiles_split = ['raw', 'withbeam', ]
+
+csim_beam_file = '/home/ycli/code/fpipe/fpipe/sim/data/beam/fast.dat'
+csim_lognorm = True
