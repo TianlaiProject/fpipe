@@ -1,8 +1,8 @@
 #from collections import OrderedDict as dict
 
 from fpipe.map import algebra as al
-#from tlpipe.powerspectrum import fgrm
-from fpipe.plot import plot_waterfall
+from meerKAT_sim.ps import fgrm
+from meerKAT_sim.plot import plot_waterfall
 
 import logging
 
@@ -11,13 +11,13 @@ import numpy as np
 import scipy as sp
 import copy
 
+import os
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-import matplotlib.patheffects as PathEffects
 
 from scipy.ndimage.filters import gaussian_filter as gf
-from scipy.signal import convolve2d
 
 from astropy.coordinates import SkyCoord
 import astropy.units as u
@@ -47,7 +47,7 @@ def load_maps_npy(dm_path, dm_file):
 def load_maps(dm_path, dm_file, name='clean_map'):
 
     with h5.File(dm_path+dm_file, 'r') as f:
-        #print f.keys()
+        print f.keys()
         imap = al.load_h5(f, name)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
         #imap = al.make_vect(al.load_h5(f, name))
@@ -68,92 +68,92 @@ def load_maps(dm_path, dm_file, name='clean_map'):
 
     return imap, ra, dec, ra_edges, dec_edges, freq, mask
 
-def smooth_map(imap, pix, freq):
-
-    _lambda = 2.99e8 / (freq * 1.e6)
-    _fwhm = 1.22 *  _lambda / 300. / np.pi * 180. * 60.
-    #_fwhm = 3. * np.ones(freq.shape)
-    _sig = _fwhm/(8. * np.log(2.))**0.5 / pix
-    for i in range(imap.shape[0]):
-        #print _fwhm[i], _sig[i]
-        kernel_n = 1.17 * int(_sig[i])
-        kernel =  np.arange(-kernel_n, kernel_n+1)
-        kernel = np.exp( - 0.5 * kernel ** 2 / _sig[i] ** 2 )
-        kernel = kernel[:, None] * kernel[None, :]
-        kernel /= np.sum(kernel)
-        imap[i, ...] = convolve2d(imap[i, ...], kernel, mode='same')
-
 def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             xlim=None, ylim=None, logscale=False,
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
             title='', c_label=None, factorize=False, 
             nvss_path = None, smoothing=False, 
-            output_name=None,
-            fig_axes = None):
+            opt=False, print_info=False, submean=False):
 
-    with h5.File(map_path, 'r') as f:
-        keys = tuple(f.keys())
-        logger.info( ('%s '* len(keys))%keys )
-        imap = al.load_h5(f, map_type)
-        imap = al.make_vect(imap, axis_names = imap.info['axes'])
-        #print imap.info
-        
-        freq = imap.get_axis('freq')
-        ra   = imap.get_axis( 'ra')
-        dec  = imap.get_axis('dec')
-        ra_edges  = imap.get_axis_edges( 'ra')
-        dec_edges = imap.get_axis_edges('dec')
-        try:
-            mask = f['mask'][:]
-        except KeyError:
-            mask = None
+    ext = os.path.splitext(map_path)[-1]
+
+    if ext == '.h5':
+        with h5.File(map_path, 'r') as f:
+            keys = tuple(f.keys())
+            imap = al.load_h5(f, map_type)
+            if print_info:
+                logger.info( ('%s '* len(keys))%keys )
+                print imap.info
+            try:
+                mask = f['mask'][:].astype('bool')
+            except KeyError:
+                mask = None
+    elif ext == '.npy':
+        imap = al.load(map_path)
+        mask = None
+    else:
+        raise IOError('%s not exists'%map_path)
+
+    imap = al.make_vect(imap, axis_names = imap.info['axes'])
+    freq = imap.get_axis('freq')
+    ra   = imap.get_axis( 'ra')
+    dec  = imap.get_axis('dec')
+    ra_edges  = imap.get_axis_edges( 'ra')
+    dec_edges = imap.get_axis_edges('dec')
 
     if map_type == 'noise_diag' and factorize:
         imap = fgrm.make_noise_factorizable(imap)
 
-    if indx is None:
-        #print 'average over freq'
-        imap = np.ma.masked_equal(imap, 0)
-        imap = np.ma.masked_invalid(imap)
+    #imap[np.abs(imap) < imap.max() * 1.e-4] = 0.
+    imap = np.ma.masked_equal(imap, 0)
+    imap = np.ma.masked_invalid(imap)
+    if mask is not None:
+        imap[mask] = np.ma.masked
+
+    imap = imap[indx]
+    freq = freq[indx[-1]]
+    if isinstance( indx[-1], slice):
+        freq = (freq[0], freq[-1])
+        #print imap.shape
         imap = np.ma.mean(imap, axis=0)
-        freq = np.mean(freq)
     else:
-        imap = imap[indx]
-        freq = freq[indx[-1]]
+        freq = (freq,)
 
-    if mK: 
-        if map_type == 'noise_diag':
-            imap = imap * 1.e6
-            unit = r'$[\rm mK]^2$'
+    if not opt:
+        if mK: 
+            if map_type == 'noise_diag':
+                imap = imap * 1.e6
+                unit = r'$[\rm mK]^2$'
+            else:
+                imap = imap * 1.e3
+                unit = r'$[\rm mK]$'
         else:
-            imap = imap * 1.e3
-            unit = r'$[\rm mK]$'
+            if map_type == 'noise_diag':
+                unit = r'$[\rm K]^2$'
+            else:
+                unit = r'$[\rm K]$'
     else:
-        if map_type == 'noise_diag':
-            unit = r'$[\rm K]^2$'
-        else:
-            unit = r'$[\rm K]$'
+        unit = r'$\delta N$'
+        if c_label is None:
+            c_label = unit
 
-    #if fig_axes is not None:
-    #    ra_0 = ra_edges.min()
-    #else:
-    #    ra_0 = 0.
+    if inv:
+        imap[imap==0] = np.inf
+        imap = 1./imap
 
     if xlim is None:
         xlim = [ra_edges.min(), ra_edges.max()]
     if ylim is None:
         ylim = [dec_edges.min(), dec_edges.max()]
 
-    #imap[np.abs(imap) < imap.max() * 1.e-4] = 0.
-    imap = np.ma.masked_equal(imap, 0)
-    imap = np.ma.masked_invalid(imap)
     #imap -= np.ma.mean(imap)
 
     if smoothing:
-        imap = imap[None, ...]
-        _pix = np.abs(dec[1] - dec[0]) * 60.
-        smooth_map(imap, _pix, freq[None])
-        imap = imap[0]
+        _sig = 3./(8. * np.log(2.))**0.5 / 1.
+        imap = gf(imap, _sig)
+
+    if submean:
+        imap -= np.ma.mean(imap)
     
     if logscale:
         imap = np.ma.masked_less(imap, 0)
@@ -172,20 +172,17 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     
     
-    if fig_axes is None:
-        fig = plt.figure(figsize=figsize)
-        l = 0.07 * 10. / figsize[0]
-        b = 0.10 *  4  / figsize[1]
-        w = 1 - 0.30 * 10  / figsize[0]
-        h = 1 - 0.20 *  4  / figsize[1]
-        ax = fig.add_axes([l, b, w, h])
-        l = 1 - 0.22 * 10. / figsize[0]
-        b = 0.20 *  4  / figsize[1]
-        w = 1 - 0.21 * 10  / figsize[0] - l
-        h = 1 - 0.40 *  4  / figsize[1]
-        cax = fig.add_axes([l, b, w, h])
-    else:
-        fig, ax, cax = fig_axes
+    fig = plt.figure(figsize=figsize)
+    l = 0.08 * 10. / figsize[0]
+    b = 0.08 *  4.  / figsize[1]
+    w = 1 - 0.20 * 10.  / figsize[0]
+    h = 1 - 0.10 *  4.  / figsize[1]
+    ax = fig.add_axes([l, b, w, h])
+    l = 1 - 0.11 * 10. / figsize[0]
+    b = 0.20 *  4  / figsize[1]
+    w = 1 - 0.10 * 10  / figsize[0] - l
+    h = 1 - 0.34 *  4  / figsize[1]
+    cax = fig.add_axes([l, b, w, h])
     ax.set_aspect('equal')
 
     #imap = np.sum(imap, axis=1)
@@ -193,12 +190,14 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
     #imap = np.array(imap)
     
     cm = ax.pcolormesh(ra_edges, dec_edges, imap.T, norm=norm)
-    if fig_axes is None:
+    if len(freq) == 1:
         ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$'%freq)
-        ax.set_xlabel(r'${\rm RA}\,[^\circ]$')
-        ax.set_ylabel(r'${\rm Dec}\,[^\circ]$')
+    else:
+        ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$ - $%7.3f\,{\rm MHz}$'%freq)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
+    ax.set_xlabel(r'${\rm RA}\,[^\circ]$')
+    ax.set_ylabel(r'${\rm Dec}\,[^\circ]$')
 
     nvss_range = [ [ra_edges.min(), ra_edges.max(), 
                     dec_edges.min(), dec_edges.max()],]
@@ -207,9 +206,9 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         nvss_sel = nvss_cat['FLUX_20_CM'] > 10.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
-        ax.plot(nvss_ra, nvss_dec, 'ko', mec='k', mfc='none', ms=8, mew=0.5)
+        ax.plot(nvss_ra, nvss_dec, 'ko', mec='k', mfc='none', ms=8, mew=1.5)
 
-        _sel = nvss_cat['FLUX_20_CM'] > 2000.
+        _sel = nvss_cat['FLUX_20_CM'] > 100.
         _id  = nvss_cat['NAME'][_sel]
         _ra  = nvss_cat['RA'][_sel]
         _dec = nvss_cat['DEC'][_sel]
@@ -217,63 +216,49 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         for i in range(np.sum(_sel)):
             ra_idx = np.digitize(_ra[i], ra_edges) - 1
             dec_idx = np.digitize(_dec[i], dec_edges) - 1
-            #ax.plot(ra[ra_idx], dec[dec_idx], 'wx', ms=10, mew=2)
+            ax.plot(ra[ra_idx], dec[dec_idx], 'wx', ms=10, mew=2)
             _c = SkyCoord(_ra[i] * u.deg, _dec[i] * u.deg)
             print '%s [RA,Dec]:'%_id[i] \
                     + '[%7.4fd'%_c.ra.deg \
                     + '(%dh%dm%6.4f) '%_c.ra.hms\
                     + ': %7.4fd], FLUX %7.4f Jy'%(_c.dec.deg, _flx[i]/1000.)
-            _s = PathEffects.withStroke(linewidth=5, foreground='w', alpha=0.8)
-            _t = ax.annotate('%s\n[%7.4f Jy]'%(_id[i].replace('NVSS', ''), 
-                _flx[i]/1000.), (_ra[i], _dec[i]-0.01), 
-                textcoords='offset points', xytext = (10, 10),
-                arrowprops=dict(edgecolor='k',facecolor='k', arrowstyle='-|>', 
-                        linewidth=1, 
-                        connectionstyle="arc,angleA=180,armA=80,rad=10"),
-                size=8, #path_effects=[_s]
-                )
-            _t.arrow_patch.set_path_effects([_s])
-
     if not logscale:
         ticks = list(np.linspace(vmin, vmax, 5))
         ticks_label = []
         for x in ticks:
             ticks_label.append(r"$%5.2f$"%x)
-        if fig_axes is None:
-            fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks)
-        else:
-            fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks, orientation = "horizontal" )
+        fig.colorbar(cm, ax=ax, cax=cax, ticks=ticks)
         cax.set_yticklabels(ticks_label)
     else:
-        if fig_axes is None:
-            fig.colorbar(cm, ax=ax, cax=cax )
-        else:
-            fig.colorbar(cm, ax=ax, cax=cax, orientation = "horizontal" )
+        fig.colorbar(cm, ax=ax, cax=cax)
     cax.minorticks_off()
     if c_label is None:
         c_label = r'$T\,$' + unit
-    if fig_axes is None:
-        cax.set_ylabel(c_label)
-    else:
-        cax.set_xlabel(c_label)
+    cax.set_ylabel(c_label)
 
-    if output_name is not None:
-        fig.savefig(output_name)
-
-    return xlim, ylim, (vmin, vmax)
+    return xlim, ylim, (vmin, vmax), fig
 
 
 def plot_map(data, indx = (), figsize=(10, 4),
             xlim=None, ylim=None, logscale=False,
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
-            smoothing=False, nvss_path=None, c_label=None, title='',
-            fig_axes = None):
+            smoothing=False, nvss_path=None, c_label=None, title=''):
 
     #imap *= 1.e3
     #imap = data[0][indx + (slice(None),)]
     #if len(indx) == 1: indx = indx + (slice(None),)
     imap = data[0][indx]
+    imap = np.ma.masked_equal(imap, 0)
+    imap = np.ma.masked_invalid(imap)
+
     freq = data[5][indx[-1]]
+    if isinstance( indx[-1], slice):
+        freq = (freq[0], freq[-1])
+        print imap.shape
+        imap = np.ma.mean(imap, axis=0)
+    else:
+        freq = (freq, )
+
     if mK:
         imap = imap * 1.e3
         unit = r'$[\rm mK]$'
@@ -304,9 +289,7 @@ def plot_map(data, indx = (), figsize=(10, 4),
         _sig = 0.8/(8. * np.log(2.))**0.5 / 0.4
         imap = gf(imap, _sig)
         
-    imap[np.abs(imap) < imap.max() * 1.e-10] = 0.
-    imap = np.ma.masked_equal(imap, 0)
-    imap = np.ma.masked_invalid(imap)
+    #imap[np.abs(imap) < imap.max() * 1.e-10] = 0.
     #imap -= np.ma.mean(imap)
     
     if logscale:
@@ -327,20 +310,30 @@ def plot_map(data, indx = (), figsize=(10, 4),
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
     
     
-    if fig_axes is None:
-        fig = plt.figure(figsize=figsize)
-        ax = fig.add_axes([0.07, 0.10, 0.70, 0.8])
-        cax = fig.add_axes([0.78, 0.2, 0.01, 0.6])
-        ax.set_aspect('equal')
-    else:
-        fig, ax, cax = fig_axes
+    fig = plt.figure(figsize=figsize)
+    #ax = fig.add_axes([0.07, 0.10, 0.70, 0.8])
+    #cax = fig.add_axes([0.78, 0.2, 0.01, 0.6])
+    l = 0.08 * 10. / figsize[0]
+    b = 0.08 *  4.  / figsize[1]
+    w = 1 - 0.20 * 10.  / figsize[0]
+    h = 1 - 0.10 *  4.  / figsize[1]
+    ax = fig.add_axes([l, b, w, h])
+    l = 1 - 0.11 * 10. / figsize[0]
+    b = 0.20 *  4  / figsize[1]
+    w = 1 - 0.10 * 10  / figsize[0] - l
+    h = 1 - 0.34 *  4  / figsize[1]
+    cax = fig.add_axes([l, b, w, h])
+    ax.set_aspect('equal')
 
     #imap = np.sum(imap, axis=1)
     
     #imap = np.array(imap)
     
     cm = ax.pcolormesh(ra_edges, dec_edges, imap.T, norm=norm)
-    ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$'%freq)
+    if len(freq) == 1:
+        ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$'%freq)
+    else:
+        ax.set_title(title + r'${\rm Frequency}\, %7.3f\,{\rm MHz}$ - $%7.3f\,{\rm MHz}$'%freq)
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     ax.set_xlabel(r'${\rm RA}\,[^\circ]$')
@@ -579,33 +572,3 @@ def plot_2dps(ps_path, ps_name_list, figsize=(16, 4),title='',
     fig.colorbar(im, ax=ax, cax=cax)
     cax.minorticks_off()
     cax.set_ylabel(r'$P(k)$')
-
-def plot_map_combined(map_path, map_names, map_type='clean_map', indx=(0,),
-                      smoothing=True, sigma=2, vmin=None, vmax=None,
-                      nvss_path=None, figsize=(25, 12)):
-
-    nmaps = len(map_names)
-    fig = plt.figure(figsize=figsize)
-    gs  = gridspec.GridSpec(nmaps , 1, left=0.055, bottom=0.045,
-                             right=0.95, top=0.90, wspace=0.0, hspace=0.01)
-
-    cax = fig.add_axes([0.65, 0.02, 0.30, 0.015])
-    for ii in range(nmaps):
-
-        ax = fig.add_subplot(gs[ii, 0])
-        fig_axes = [fig, ax, cax]
-        xlim, ylim, v = show_map(map_path + map_names[ii], map_type, indx = indx,
-                                    vmin=vmin, vmax=vmax,
-                                    sigma=sigma, fig_axes=fig_axes, smoothing=smoothing,
-                                    mK=False, nvss_path=nvss_path)
-        xmin, xmax = xlim
-        xx = np.arange(int(xmax-xmin) + 1)
-        ax.set_xticks(xx + xmin)
-        xx_label = [r'$+%d$'%x for x in xx]
-        xx_label[0] = r'$%6.2f$'%xmin
-        ax.set_xticklabels(xx_label)
-
-    fig.text(0.40, 0.01/12.*figsize[1], r'R.A. (J2000) [$^\circ$]', fontsize=20)
-    fig.text(0.02, 0.55,  r'Dec. (J2000) [$^\circ$]', rotation='vertical', fontsize=20)
-
-    return fig

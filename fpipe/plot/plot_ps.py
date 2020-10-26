@@ -17,7 +17,7 @@ from meerKAT_sim.sim import corr21cm
 from meerKAT_sim.sim import fisher
 
 from fpipe.utils import binning
-from fpipe.utils import algebra as al
+from fpipe.map import algebra as al
 
 from meerKAT_sim.ps import pwrspec_estimator as pet
 
@@ -328,7 +328,7 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
         'logk': logk,
         'kh_edgs' : kh_edgs,
         'mu_edgs' : mu_edgs,
-        'S_area': 200.,
+        'S_area': 1000.,
         'T_sys' : Tsys * 1.e3,
         'pixel_size' : 1.,
         't_tot' : 100. * 3600.,

@@ -2,7 +2,7 @@ import numpy as np
 import scipy as sp
 import scipy.ndimage
 import dask.array as da
-#from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d
 from scipy.interpolate import NearestNDInterpolator
 from scipy.interpolate.rbf import Rbf
 from fpipe.map import algebra
@@ -59,7 +59,7 @@ def centering_to_fieldcenter(ra, dec):
 
     return ra, dec
 
-def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1, 
+def physical_grid_lf(input_array, refinement=1, pad=2, order=0, feedback=1, 
         mode='constant'):
     r"""Project from freq, ra, dec into physical coordinates
 
@@ -174,7 +174,12 @@ def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1,
     _yy, _xx = np.meshgrid(y_axis, x_axis)
     #dd_f = NearestNDInterpolator(coord, dd)
 
+    _pp = 0
     for i in range(radius_axis.shape[0]):
+        if int(10 * i / float(radius_axis.shape[0])) > _pp:
+            print '.', 
+            _pp = int(10 * i / float(radius_axis.shape[0]))
+        #print '%3d '%i,
         _zz = radius_axis[i] * np.ones(_yy.shape)
         _sel  = zz[:, 0] < radius_axis[i] + 1 * info['freq_delta']
         _sel *= zz[:, 0] > radius_axis[i] - 1 * info['freq_delta']
@@ -182,15 +187,14 @@ def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1,
             #dd_f = Rbf(xx[_sel], yy[_sel], zz[_sel], dd[_sel], function='linear')
             dd_f = NearestNDInterpolator(coord[_sel], dd[_sel])
             phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
-        print i,
         #phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
-    print
+    print '. Done'
 
     #phys_map_npy = algebra.make_vect(phys_map_npy, axis_names=('freq', 'ra', 'dec'))
     #phys_map_npy.info = info
     return phys_map, info
 
-def physical_grid_old(input_array, refinement=1, pad=2, order=0, feedback=1, 
+def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1, 
         mode='constant'):
     r"""Project from freq, ra, dec into physical coordinates
 
@@ -300,11 +304,12 @@ def physical_grid_old(input_array, refinement=1, pad=2, order=0, feedback=1,
     # Construct an array of the redshifts on each slice of the cube.
     #comoving_inv = cosmo.inverse_approx(cosmology.comoving_distance, z1 * 0.9, z2 * 1.1)
     #za = comoving_inv(radius_axis)  # redshifts on the constant-D spacing
-    _xp = np.linspace(z1 * 0.9, z2 * 1.1, 200)
+    _xp = np.linspace(z1 * 0.9, z2 * 1.1, 500)
     _fp = (cosmology.comoving_distance(_xp) * cosmology.h).value
-    #comoving_inv = interp1d((_fp, _xp)
+    #comoving_inv = interp1d(_fp, _xp)
     #za = comoving_inv(radius_axis)  # redshifts on the constant-D spacing
-    #nua = __nu21__ / (1. + za)
+    za = np.interp(radius_axis, _fp, _xp)
+    nua = __nu21__ / (1. + za)
 
     gridy, gridx = np.meshgrid(y_axis, x_axis)
     interpol_grid = np.zeros((3, n[1], n[2]))
@@ -314,13 +319,13 @@ def physical_grid_old(input_array, refinement=1, pad=2, order=0, feedback=1,
         #print nua[i], freq_axis[0], freq_axis[-1], (nua[i] - freq_axis[0]) / \
         #                                (freq_axis[-1] - freq_axis[0]) * numz
         #_radius_axis = np.sqrt(radius_axis[i]**2 + gridy**2 + gridx**2)
-        _radius_axis = np.sqrt(radius_axis[i]**2 + gridx**2)
-        za = np.interp(_radius_axis, _fp, _xp)
-        nua = __nu21__ / (1. + za)
+        #_radius_axis = np.sqrt(radius_axis[i]**2 + gridx**2)
+        #za = np.interp(_radius_axis, _fp, _xp)
+        #nua = __nu21__ / (1. + za)
 
-        interpol_grid[0, :, :] = (nua - freq_axis[0]) / \
+        interpol_grid[0, :, :] = (nua[i] - freq_axis[0]) / \
                                  (freq_axis[-1] - freq_axis[0]) * numz
-        proper_z = cosmology.comoving_transverse_distance(za) * cosmology.h
+        proper_z = cosmology.comoving_transverse_distance(za[i]) * cosmology.h
         proper_z = proper_z.value
 
         angscale = ((proper_z * u.deg).to(u.rad)).value
