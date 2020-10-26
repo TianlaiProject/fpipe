@@ -21,7 +21,7 @@ import gc
 
 import pandas as pd
 
-from meerKAT_sim.fnoise import fnoise
+from fpipe.fnoise import fnoise
 
 __dtype__ = 'float32'
 
