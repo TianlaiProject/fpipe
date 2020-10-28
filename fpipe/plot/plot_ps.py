@@ -13,13 +13,12 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from meerKAT_sim.sim import corr21cm
-from meerKAT_sim.sim import fisher
+from fpipe.sim import fisher
 
 from fpipe.utils import binning
 from fpipe.map import algebra as al
 
-from meerKAT_sim.ps import pwrspec_estimator as pet
+from fpipe.ps import pwrspec_estimator as pet
 
 _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
            "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
@@ -358,8 +357,8 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
     label = r'$T_{\rm sys}=%3.1f\,{\rm K}$'%Tsys
     if cross:
         label += ',' + r'$\bar{n}_{\rm g} = %3.2f\times10^{-4}$'%nbar
-    ax.fill_between(kh, pkhi1d_c * (1 + dpk2pk), pkhi1d_c * (1 - dpk2pk),
-            color='0.8', step='mid', 
-            label=label)
+    #ax.fill_between(kh, pkhi1d_c * (1 + dpk2pk), pkhi1d_c * (1 - dpk2pk),
+    #        color='0.8', step='mid', 
+    #        label=label)
 
     #----------------------------

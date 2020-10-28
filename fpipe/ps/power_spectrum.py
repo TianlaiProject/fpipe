@@ -19,6 +19,7 @@ from fpipe.ps import pwrspec_estimator as pse, fgrm
 logger = logging.getLogger(__name__)
 
 physical_grid = gridding.physical_grid_lf
+#physical_grid = gridding.physical_grid
 
 
 class PowerSpectrum(OneAndOne, mapbase.MapBase):

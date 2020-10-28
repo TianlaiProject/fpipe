@@ -7,8 +7,9 @@ import os
 
 data_base = '/project/ycli/fsim/'
 
-#sim_type = os.getenv('SIM_TYPE')
-sim_type = 'wigglez_map_hi'
+sim_type = os.getenv('SIM_TYPE')
+#sim_type = 'wigglez_map_hi'
+#sim_type = 'wigglez_map_hi_wn20'
 
 pipe_tasks = []
 pipe_outdir = data_base
@@ -16,7 +17,7 @@ pipe_logging = 'info'
 pipe_feedback = 2
 pipe_copy = False
 
-mock_n = 10
+mock_n = 100
 tmp_name = '%s/sim_mock%03d_F19_DriftScan_ideal_withbeam.h5'
 
 pipe_tasks.append(power_spectrum.AutoPS_OneByOne)
@@ -24,17 +25,19 @@ pipe_tasks.append(power_spectrum.AutoPS_OneByOne)
 
 aps1b1_input_files  = [tmp_name%(sim_type, i) for i in range(mock_n)]
 aps1b1_output_files = ['ps/%s.h5'%sim_type,]
-aps1b1_kmin = 5.e-2
-aps1b1_kmax = 1.e0
-aps1b1_knum = 20
-aps1b1_kbin_x = np.logspace(-2,  0, 18)
-aps1b1_kbin_y = np.logspace(-2,  0, 18)
+aps1b1_kmin = 2.e-2
+aps1b1_kmax = 2.0
+aps1b1_knum = 25
 aps1b1_logk = True
+aps1b1_kbin_x = np.linspace(0.01, 0.3, 15) # np.logspace(-2,  0, 18)
+aps1b1_kbin_y = np.linspace(0.01, 0.3, 15) # np.logspace(-2,  0, 18)
+aps1b1_logk_2d = False
 aps1b1_map_key =    ['clean_map', ] * 2
 aps1b1_weight_key = [None, ] * 2
 aps1b1_nonorm = False
 aps1b1_unitless = False
 aps1b1_prewhite = True
+aps1b1_refinement = 0.5
 
 apscube_input_files  = ['wigglez_cube/Equator_cube_ideal_bk.h5', ]
 apscube_output_files = ['ps/%s_cubefile.h5'%sim_type,]
@@ -49,3 +52,4 @@ apscube_weight_key = [None, ] * 2
 apscube_nonorm = False
 apscube_unitless = False
 apscube_prewhite = True
+apscube_refinement = 0.5

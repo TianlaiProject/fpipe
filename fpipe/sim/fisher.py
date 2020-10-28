@@ -1,3 +1,4 @@
+from os.path import join, dirname
 from astropy.cosmology import Planck15 as cosmo
 from astropy import units as u
 from astropy import constants as const
@@ -10,7 +11,7 @@ from scipy.integrate import quad, quadrature
 import matplotlib.pyplot as plt
 
 #__pk_file__ = '/users/ycli/code/camb/output/HI_matterpower.dat'
-__pk_file__ = '/users/ycli/project/meerKAT_sim/meerKAT_sim/sim/data/input_matterpower.dat'
+__pk_file__ = join(dirname(__file__), 'data/input_matterpower.dat')
 __pk_redshift__ = 0.2
 
 def grouth_rate():

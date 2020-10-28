@@ -27,29 +27,6 @@ __dtype__ = 'float32'
 
 logger = logging.getLogger(__name__)
 
-#ants = ['m017', 'm021', 'm036']
-#ants_pos = [
-#        [ 200., 123., 0.],
-#        [-296., -93., 0.],
-#        [ 388., -57., 0.],
-#        ]
-
-#ant_dat = np.genfromtxt('/users/ycli/code/tlpipe/tlpipe/sim/data/meerKAT.dat', 
-#        dtype=[('name', 'S4'), ('X', 'f8'), ('Y', 'f8'), ('Z', 'f8')])
-#
-#ants = ant_dat['name'] 
-#
-#ants_pos = [ant_dat['X'][:, None], ant_dat['Y'][:, None], ant_dat['Z'][:, None]]
-#ants_pos = np.concatenate(ants_pos, axis=1)
-
-
-#ants = ants[:60]
-#ants_pos = ants_pos[:60, :]
-
-
-#ant_Lon =  (21. + 26./60. + 37.69/3600.) * u.deg 
-#ant_Lat = -(30. + 42./60. + 46.53/3600.) * u.deg  
-
 class SurveySim(pipeline.TaskBase):
 
     params_init = {
@@ -81,6 +58,7 @@ class SurveySim(pipeline.TaskBase):
             'HI_bias'  : 1.0,
             'HI_model_type' : 'delta', # withbeam, raw, delta
             'HI_scenario'   : 'ideal',
+            'HI_mock_ids'   : None,
 
             'mock_n'   : 10,
             'mock_id'  : None,
@@ -149,11 +127,18 @@ class SurveySim(pipeline.TaskBase):
 
         if self.params['HI_model'] is not None:
             with h5py.File(self.params['HI_model'], 'r') as fhi:
-                self.HI_model = al.make_vect(
-                        al.load_h5(fhi, self.params['HI_model_type']))
+                #_HI_model = al.make_vect(
+                _HI_model = al.load_h5(fhi, self.params['HI_model_type'])
                 logger.info('HI bias %3.2f'%self.params['HI_bias'])
-                self.HI_model *= self.params['HI_bias']
-                self.mock_n = self.HI_model.shape[0]
+                _HI_model *= self.params['HI_bias']
+                if self.params['HI_mock_ids'] is not None:
+                    self.HI_mock_ids = list(self.params['HI_mock_ids'])
+                    _HI_model = _HI_model[self.HI_mock_ids]
+                else:
+                    self.HI_mock_ids = range(_HI_model.shape[0])
+
+                self.mock_n = _HI_model.shape[0]
+                self.HI_model = al.make_vect(_HI_model)
         else:
             self.mock_n = self.params['mock_n']
 
@@ -256,6 +241,7 @@ class SurveySim(pipeline.TaskBase):
         #vis[:, :, :, 1, self.auto_idx] = rvis[:, :, :, 1, :] + 0. * 1j
 
         for ii in range(mock_n):
+            #for ii in self.HI_mock_ids:
 
             #shp = (block_n, freq_n, 4, len(self.blorder))
             #vis = np.empty(shp, dtype=np.complex)
@@ -309,8 +295,11 @@ class SurveySim(pipeline.TaskBase):
     def write_to_file(self, vis=None, mock=0):
 
         output_prefix = '/sim_mock%03d/%s_%s_%s_%s'%(
-                mock, self.params['prefix'], self.params['survey_mode'], 
-                self.params['HI_scenario'], self.params['HI_model_type'])
+                self.HI_mock_ids[mock], 
+                self.params['prefix'], 
+                self.params['survey_mode'], 
+                self.params['HI_scenario'], 
+                self.params['HI_model_type'])
 
         block_time = self.block_time[:self.iter+1]
 
@@ -449,7 +438,8 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
 
         mock_n = self.mock_n
 
-        for ii in range(mock_n):
+        #for ii in range(mock_n):
+        for ii in self.HI_mock_ids:
             output_file = 'sim_mock%03d_%s_%s_%s_%s.h5'%(
                 ii, self.params['prefix'], self.params['survey_mode'],
                 self.params['HI_scenario'], self.params['HI_model_type'])
@@ -491,6 +481,7 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
         mpiutil.barrier()
 
         if mpiutil.rank0:
+            #for ii in self.HI_mock_ids:
             for ii in range(self.mock_n):
                 norm = self.df_out[ii]['count_map'][:] 
                 hist = self.df_out[ii]['dirty_map'][:] 

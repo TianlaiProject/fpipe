@@ -1,8 +1,8 @@
 #from collections import OrderedDict as dict
 
 from fpipe.map import algebra as al
-from meerKAT_sim.ps import fgrm
-from meerKAT_sim.plot import plot_waterfall
+from fpipe.ps import fgrm
+from fpipe.plot import plot_waterfall
 
 import logging
 

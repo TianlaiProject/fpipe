@@ -16,7 +16,7 @@ pipe_tasks.append(cube_sim.CubeSim)
 
 csim_prefix           = 'Equator'
 csim_freq             = np.arange(1050, 1150, 1.0)
-csim_mock_n           = 10
+csim_mock_n           = 100
 csim_scenario         = 'ideal'
 csim_refinement       = 1
 
