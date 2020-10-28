@@ -64,6 +64,12 @@ class FAST_Timestream(timestream.Timestream):
         except KeyError:
             raise RuntimeError('Polarization of the data is unknown, can not convert')
 
+        try:
+            pol_type = pol.attrs['pol_type']
+        except KeyError:
+            Warning('pol_type is not recorded, assume linear')
+            pol.attrs['pol_type'] = 'linear'
+
         if pol.attrs['pol_type'] == 'stokes' and pol.shape[0] == 4:
             warning.warn('Data is already Stokes polarization, no need to convert')
             return

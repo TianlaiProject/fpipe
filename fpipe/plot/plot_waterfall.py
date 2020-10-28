@@ -160,7 +160,8 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
                 x_label = 'R.A.' 
                 print 'RA range [%6.2f, %6.2f]'%( x_axis.min(), x_axis.max())
             else:
-                x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+                time = ts['sec1970'] + ts.attrs['sec1970']
+                x_axis = [ datetime.fromtimestamp(s) for s in time]
                 x_label = 'UTC %s' % x_axis[0].date()
                 # convert datetime objects to the correct format for 
                 # matplotlib to work with
@@ -414,7 +415,7 @@ def get_nvss_radec(nvss_path, nvss_range):
 
     _sel = np.zeros(data['RA'].shape[0], dtype ='bool')
     for _nvss_range in nvss_range:
-        print _nvss_range
+        #print _nvss_range
 
         ra_min, ra_max, dec_min, dec_max = _nvss_range
 
@@ -423,7 +424,7 @@ def get_nvss_radec(nvss_path, nvss_range):
         sel *= data['DEC'] > dec_min
         sel *= data['DEC'] < dec_max
 
-        print np.sum(sel)
+        #print np.sum(sel)
 
         _sel = _sel + sel
 
@@ -529,7 +530,8 @@ class PlotVvsTime(PlotTimeStream):
                 self.x_label = 'R.A.' 
                 print 'RA range %f - %f'%(x_axis.min(), x_axis.max())
             else:
-                x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+                time = ts['sec1970'] + ts.attrs['sec1970']
+                x_axis = [ datetime.fromtimestamp(s) for s in time]
                 self.x_label = '%s UTC' % x_axis[0].date()
                 x_axis = mdates.date2num(x_axis)
             #if xmin is not None:
@@ -700,7 +702,8 @@ class PlotNcalVSTime(PlotVvsTime):
                 x_axis = ts['ra'][:, gi]
                 self.x_label = 'R.A.' 
             else:
-                x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+                time = ts['sec1970'] + ts.attrs['sec1970']
+                x_axis = [ datetime.fromtimestamp(s) for s in time]
                 self.x_label = '%s UTC' % x_axis[0].date()
                 x_axis = mdates.date2num(x_axis)
             if xmin is not None:
@@ -886,7 +889,8 @@ class PlotPointingvsTime(PlotTimeStream):
             self.x_label = 'time index'
         else:
             y_label = r'$\nu$ / GHz'
-            x_axis = [ datetime.fromtimestamp(s) for s in ts['sec1970']]
+            time = ts['sec1970'] + ts.attrs['sec1970']
+            x_axis = [ datetime.fromtimestamp(s) for s in time]
             self.x_label = '%s' % x_axis[0].date()
             x_axis = mdates.date2num(x_axis)
 
@@ -951,7 +955,8 @@ class PlotSpectrum(PlotTimeStream):
         print "global index %2d [m%03d]"%(gi, bl[0]-1)
         freq_indx = np.arange(vis.shape[1])
         freq = ts['freq'][:] * 1.e-3
-        self.x_label = r'$\nu$ / GHz'
+        #self.x_label = r'$\nu$ / GHz'
+        self.x_label = 'f [GHz]'
 
         bad_freq = np.all(vis_mask, axis=(0, 2))
         bad_time = np.all(vis_mask, axis=(1, 2))

@@ -66,6 +66,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
             'freq_select' : (0, 4), 
 
             'save_cov' : False,
+            'diag_cov' : False,
 
             'save_localHI' : False,
             }
@@ -272,8 +273,12 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         self.df['mask'] = np.zeros([n_bl, n_pol, n_freq])
         #self.mask = np.zeros([n_bl, n_pol, n_freq])
 
-        axis_names = ('bl', 'pol', 'freq', 'ra', 'dec', 'ra', 'dec')
-        cov_tmp = np.zeros((n_bl, n_pol, n_freq) +  self.map_shp + self.map_shp)
+        if self.params['diag_cov']:
+            axis_names = ('bl', 'pol', 'freq', 'ra', 'dec')
+            cov_tmp = np.zeros((n_bl, n_pol, n_freq) +  self.map_shp)
+        else:
+            axis_names = ('bl', 'pol', 'freq', 'ra', 'dec', 'ra', 'dec')
+            cov_tmp = np.zeros((n_bl, n_pol, n_freq) +  self.map_shp + self.map_shp)
         cov_tmp = al.make_vect(cov_tmp, axis_names=axis_names)
         cov_tmp.set_axis_info('bl',   np.arange(n_bl)[n_bl//2],   1)
         cov_tmp.set_axis_info('pol',  np.arange(n_pol)[n_pol//2], 1)
@@ -318,8 +323,10 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         dec_axis = self.map_tmp.get_axis('dec')
 
         map_shp = ra_axis.shape + dec_axis.shape
-        _ci = np.zeros((np.product(map_shp), np.product(map_shp)),
-                dtype=__dtype__)
+        if self.params['diag_cov']:
+            _ci = np.zeros((np.product(map_shp),), dtype=__dtype__)
+        else:
+            _ci = np.zeros((np.product(map_shp), np.product(map_shp)), dtype=__dtype__)
         _dm = np.zeros((np.product(map_shp),), dtype=__dtype__)
 
         for _vis_idx in vis_idx:
@@ -369,13 +376,17 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
                                dec[st:et, ...], 
                                ra_axis, dec_axis, 
                                _ci, _dm,
-                               beam_size=beam_fwhm,
+                               diag_cov = self.params['diag_cov'],
+                               beam_size= beam_fwhm,
                                beam_cut = self.params['beam_cut'])
 
         logger.debug('write to disk')
         _dm.shape = map_shp
         self.write_block_to_dset('dirty_map', map_idx, _dm)
-        _ci.shape = map_shp * 2
+        if self.params['diag_cov']:
+            _ci.shape = map_shp
+        else:
+            _ci.shape = map_shp * 2
         self.write_block_to_dset('cov_inv', map_idx, _ci)
         del _ci, _dm
         gc.collect()
@@ -388,7 +399,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         mpiutil.barrier()
 
 def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, ra_axis, dec_axis, 
-        cov_inv_block, dirty_map, beam_size=3./60.,  beam_cut = 0.01,):
+        cov_inv_block, dirty_map, diag_cov=False, beam_size=3./60.,  beam_cut = 0.01,):
 
     map_shp = ra_axis.shape + dec_axis.shape
 
@@ -456,7 +467,10 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, ra_axis, dec_axis,
     weight = np.eye(vis_one.shape[0]) * weight
     #cov_inv_block += np.dot(np.dot(P.T, weight) , P)
     #P[P!=0] = 1.
-    cov_inv_block += multi_dot([P.T, weight, P])
+    if diag_cov:
+        cov_inv_block += np.diag(multi_dot([P.T, weight, P]))
+    else:
+        cov_inv_block += multi_dot([P.T, weight, P])
     #cov_inv_block.shape = map_shp * 2
     #cov_inv_block[cov_inv_block<1.e-10] = 0.
 
@@ -619,8 +633,12 @@ class MakeMap_CombineAll(DirtyMap):
 
         msg = 'init cov dsets'
         logger.debug(msg)
-        axis_names = ('freq', 'ra', 'dec', 'ra', 'dec')
-        cov_shp = (n_freq, ) +  self.map_shp + self.map_shp
+        if self.params['diag_cov']:
+            axis_names = ('freq', 'ra', 'dec')
+            cov_shp = (n_freq, ) +  self.map_shp 
+        else:
+            axis_names = ('freq', 'ra', 'dec', 'ra', 'dec')
+            cov_shp = (n_freq, ) +  self.map_shp + self.map_shp
         cov_info = {
                 'ra_delta'    : self.ra_spacing,
                 'ra_centre'   : field_centre[0],
