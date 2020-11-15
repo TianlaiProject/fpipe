@@ -21,12 +21,12 @@ csim_scenario         = 'ideal'
 csim_refinement       = 1
 
 csim_field_centre     = (150., 26.)
-#csim_map_shape        = [3600, 280]
-#csim_pixel_spacing    = 1./60.
-#csim_map_pad          = 5
-csim_map_shape        = [1200, 90]
-csim_pixel_spacing    = 3./60.
+csim_map_shape        = [3600, 280]
+csim_pixel_spacing    = 1./60.
 csim_map_pad          = 1
+#csim_map_shape        = [1200, 90]
+#csim_pixel_spacing    = 3./60.
+#csim_map_pad          = 1
 
 csim_outfiles = ['raw', 'withbeam']
 #csim_outfiles_split = ['raw', 'withbeam', ]

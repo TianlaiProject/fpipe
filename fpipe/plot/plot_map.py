@@ -170,6 +170,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             #if vmax is None: vmax = np.ma.median(imap)
  
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+    print vmin, vmax
     
     
     fig = plt.figure(figsize=figsize)

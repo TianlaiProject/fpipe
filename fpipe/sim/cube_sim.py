@@ -77,7 +77,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
 
         if self.params['map_tmp'] is None:
 
-            freq  = self.params['freq'] * 1.e6
+            freq  = self.params['freq'] #* 1.e6
             freq_d = freq[1] - freq[0]
             freq_n = freq.shape[0]
             freq_c = freq[freq_n//2]
@@ -121,13 +121,13 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         #self.beam_freq = np.array([900, 1100, 1400]) #* 1.e6
         if self.params['beam_file'] is not None:
             _bd = np.loadtxt(self.params['beam_file'])
-            self.beam_freq = _bd[:, 0] * 1.e6
+            self.beam_freq = _bd[:, 0] #* 1.e6
             self.beam_data = _bd[:, 1]
         else:
             fwhm1400=0.9
             self.beam_freq = np.linspace(800., 1600., 500).astype('float')
             self.beam_data = 1.2 * fwhm1400 * 1400. / self.beam_freq
-            self.beam_freq *= 1.e6
+            #self.beam_freq *= 1.e6
 
         random.seed(3936650408)
         seeds = random.random_integers(100000000, 1000000000, mpiutil.size)
@@ -171,6 +171,10 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         """do basic handling to call Richard's simulation code
         this produces self.sim_map and self.sim_map_phys
         """
+        # corr.like_kiyo_map requires frequency in Hz
+        self.map_tmp.info['freq_delta']  *= 1.e6
+        self.map_tmp.info['freq_centre'] *= 1.e6
+
         if self.scenario == "nostr":
             print "running dd+vv and no streaming case"
             #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp)
@@ -195,6 +199,11 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
                                             density_only=True,
                                             no_mean=True,
                                             no_evolution=True)
+
+        # corr.like_kiyo_map requires frequency in Hz
+        # chenge back to MHz for the rest
+        self.map_tmp.info['freq_delta']  /= 1.e6
+        self.map_tmp.info['freq_centre'] /= 1.e6
 
         self.simobj = simobj
         self.kk_input = np.logspace(-2, 0, 200)
@@ -234,13 +243,13 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
     def make_delta_sim(self):
         r"""this produces self.sim_map_delta"""
         print "making sim in units of overdensity"
-        freq_axis = self.sim_map.get_axis('freq')  / 1.e6
+        freq_axis = self.sim_map.get_axis('freq')  #/ 1.e6
         z_axis = __nu21__ / freq_axis - 1.0
 
         #simobj = corr21cm.Corr21cm()
         #simobj = self.corr()
         simobj = self.simobj
-        T_b = simobj.T_b(z_axis) * 1e-3
+        T_b = simobj.T_b(z_axis) #* 1e-3
 
         self.sim_map_delta = copy.deepcopy(self.sim_map)
         self.sim_map_delta /= T_b[:, np.newaxis, np.newaxis]
@@ -310,8 +319,8 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         dset_info['type'] = 'vect'
         dset_info['mock_delta']  = 1
         dset_info['mock_centre'] = self.params['mock_n']//2
-        dset_info['freq_delta']  = self.map_tmp.info['freq_delta'] / 1.e6
-        dset_info['freq_centre'] = self.map_tmp.info['freq_centre'] / 1.e6
+        dset_info['freq_delta']  = self.map_tmp.info['freq_delta'] #/ 1.e6
+        dset_info['freq_centre'] = self.map_tmp.info['freq_centre'] #/ 1.e6
         dset_info['ra_delta']    = self.map_tmp.info['ra_delta']
         dset_info['ra_centre']   = self.map_tmp.info['ra_centre']
         dset_info['dec_delta']   = self.map_tmp.info['dec_delta']
@@ -368,8 +377,8 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
                 d[:] = _d[map_slice]
                 for key, value in self.map_tmp.info.iteritems():
                     d.attrs[key] = repr(value)
-                d.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] / 1.e6 )
-                d.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'] / 1.e6 )
+                d.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] )
+                d.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'] )
                 #d.attrs['ra_delta']    = repr(self.map_tmp.info['ra_delta']) 
                 #d.attrs['ra_centre']   = repr(self.map_tmp.info['ra_centre'])
                 #d.attrs['dec_delta']   = repr(self.map_tmp.info['dec_delta'])
@@ -383,8 +392,8 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
                     n[:] = getattr(self, weight_name)[map_slice]
                     for key, value in self.map_tmp.info.iteritems():
                         n.attrs[key] = repr(value)
-                    n.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] / 1.e6)
-                    n.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'] / 1.e6)
+                    n.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] )
+                    n.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'])
                     #n.attrs['ra_delta']    = repr(self.map_tmp.info['ra_delta'])
                     #n.attrs['ra_centre']   = repr(self.map_tmp.info['ra_centre'])
                     #n.attrs['dec_delta']   = repr(self.map_tmp.info['dec_delta'])

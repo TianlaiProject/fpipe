@@ -199,15 +199,22 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                 _map_B_path, _map_B_name = os.path.split(os.path.splitext(_maps[1])[0])
                 logger.info('add real map pair (%s %s)'%(_map_A_name, _map_B_name))
                 with h5.File(os.path.join(_map_A_path,_map_A_name+'.h5'), 'r') as f:
-                    maps[0][:] += al.load_h5(f, 'cleaned_00mode/%s'%_map_B_name)
+                    _map0 = al.load_h5(f, 'cleaned_00mode/%s'%_map_B_name)
+                    maps[0][:] +=  _map0
                 with h5.File(os.path.join(_map_B_path,_map_B_name+'.h5'), 'r') as f:
-                    maps[1][:] += al.load_h5(f, 'cleaned_00mode/%s'%_map_A_name)
+                    _map1 = al.load_h5(f, 'cleaned_00mode/%s'%_map_A_name)
+                    maps[1][:] += _map1
 
             svd_info = self.svd_info
             if svd_info is None:
                 freq_cov, counts = find_modes.freq_covariance(maps[0], maps[1], 
                     weights[0], weights[1], freq_good, freq_good)
                 svd_info = find_modes.get_freq_svd_modes(freq_cov, np.sum(freq_good))
+
+            if self.params['add_map'] is not None:
+                maps[0][:] -=  _map0
+                maps[1][:] -=  _map1
+
 
             mode_list = self.mode_list
 
@@ -351,18 +358,23 @@ class FGRM_SVD_Auto(FGRM_SVD):
                 input_file_name_jj = self.params['svd_key'][1]
             tind_l = (ii, )
             tind_r = (ii, )
-            tind_o = [input_file_name_ii, input_file_name_jj]
-            task_list.append([tind_l, tind_r, tind_o])
 
             for kk in self.mode_list:
-                self.create_dataset(ii, 'cleaned_%02dmode/'%kk + input_file_name_ii, 
-                        dset_shp = map_tmp.shape, dset_info = map_tmp.info)
                 if input_file_name_jj != input_file_name_ii:
+                    tind_o = [input_file_name_ii, input_file_name_jj]
+                    self.create_dataset(ii, 'cleaned_%02dmode/'%kk + input_file_name_ii, 
+                        dset_shp = map_tmp.shape, dset_info = map_tmp.info)
                     self.create_dataset(ii, 'cleaned_%02dmode/'%kk + input_file_name_jj, 
                         dset_shp = map_tmp.shape, dset_info = map_tmp.info)
                     #print 'cleaned_%02dmode/Combined'%kk
                     self.create_dataset(ii, 'cleaned_%02dmode/Combined'%kk, 
                         dset_shp = map_tmp.shape, dset_info = map_tmp.info)
+                else:
+                    tind_o = ['cmap', 'cmap']
+                    self.create_dataset(ii, 'cleaned_%02dmode/cmap'%kk, 
+                        dset_shp = map_tmp.shape, dset_info = map_tmp.info)
+
+            task_list.append([tind_l, tind_r, tind_o])
 
             self.create_dataset(ii, 'weight', dset_shp = map_tmp.shape,
                                 dset_info = map_tmp.info)

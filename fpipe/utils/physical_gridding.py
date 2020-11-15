@@ -81,16 +81,16 @@ def physical_grid_lf(input_array, refinement=1, pad=2, order=0, feedback=1,
     ra_axis   = input_array.get_axis('ra')
     dec_axis  = input_array.get_axis('dec')
 
-    freq_axis = np.pad(freq_axis, 1, mode='edge')
-    ra_axis   = np.pad(ra_axis,   1, mode='edge')
-    dec_axis  = np.pad(dec_axis,  1, mode='edge')
-    freq_axis[ 0] -= input_array.info['freq_delta']
-    freq_axis[-1] += input_array.info['freq_delta']
-    ra_axis[ 0]   -= input_array.info['ra_delta']
-    ra_axis[-1]   += input_array.info['ra_delta']
-    dec_axis[ 0]  -= input_array.info['dec_delta']
-    dec_axis[-1]  += input_array.info['dec_delta']
-    input_array = np.pad(input_array, 1, mode='constant')
+    #freq_axis = np.pad(freq_axis, 1, mode='edge')
+    #ra_axis   = np.pad(ra_axis,   1, mode='edge')
+    #dec_axis  = np.pad(dec_axis,  1, mode='edge')
+    #freq_axis[ 0] -= input_array.info['freq_delta']
+    #freq_axis[-1] += input_array.info['freq_delta']
+    #ra_axis[ 0]   -= input_array.info['ra_delta']
+    #ra_axis[-1]   += input_array.info['ra_delta']
+    #dec_axis[ 0]  -= input_array.info['dec_delta']
+    #dec_axis[-1]  += input_array.info['dec_delta']
+    #input_array = np.pad(input_array, 1, mode='constant')
 
     _dec, _ra = np.meshgrid(dec_axis, ra_axis)
     _ra, _dec = centering_to_fieldcenter(_ra, _dec)
@@ -112,8 +112,8 @@ def physical_grid_lf(input_array, refinement=1, pad=2, order=0, feedback=1,
     xx = xx.flatten()[:, None]
     yy = yy.flatten()[:, None]
     zz = zz.flatten()[:, None]
-    dd = input_array.flatten()[:, None]
-    coord = np.concatenate([xx, yy, zz], axis=1)
+    dd = input_array.flatten()
+    coord = np.concatenate([zz, xx, yy], axis=1)
     #input_array_f = NearestNDInterpolator(coord, input_array.flatten())
     #input_array_f = Rbf(xx, yy, zz, input_array.flatten()[:, None], function='linear')
 
@@ -166,32 +166,45 @@ def physical_grid_lf(input_array, refinement=1, pad=2, order=0, feedback=1,
     phys_map.info = info
 
     # same as np.linspace(c1, c2, n[0], endpoint=True)
-    radius_axis = phys_map.get_axis("freq")
-    x_axis = phys_map.get_axis("ra")
-    y_axis = phys_map.get_axis("dec")
+    z_axis = phys_map.get_axis_edges("freq")
+    x_axis = phys_map.get_axis_edges("ra")
+    y_axis = phys_map.get_axis_edges("dec")
+    
+    norm = np.histogramdd(coord, bins=[z_axis, x_axis, y_axis])[0] * 1.
+    phys_map[:] = np.histogramdd(coord, bins=[z_axis, x_axis, y_axis], weights=dd)[0]
+    
+    norm[norm==0] = np.inf
+    phys_map /= norm
 
-    _yy, _xx = np.meshgrid(y_axis, x_axis)
-    #dd_f = NearestNDInterpolator(coord, dd)
-
-    _pp = 0
-    for i in range(radius_axis.shape[0]):
-        if int(10 * i / float(radius_axis.shape[0])) > _pp:
-            print '.', 
-            _pp = int(10 * i / float(radius_axis.shape[0]))
-        #print '%3d '%i,
-        _zz = radius_axis[i] * np.ones(_yy.shape)
-        _sel  = zz[:, 0] < radius_axis[i] + 1 * info['freq_delta']
-        _sel *= zz[:, 0] > radius_axis[i] - 1 * info['freq_delta']
-        if np.any(_sel):
-            #dd_f = Rbf(xx[_sel], yy[_sel], zz[_sel], dd[_sel], function='linear')
-            dd_f = NearestNDInterpolator(coord[_sel], dd[_sel])
-            phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
-        #phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
-    print '. Done'
-
-    #phys_map_npy = algebra.make_vect(phys_map_npy, axis_names=('freq', 'ra', 'dec'))
-    #phys_map_npy.info = info
     return phys_map, info
+
+    ## same as np.linspace(c1, c2, n[0], endpoint=True)
+    #radius_axis = phys_map.get_axis("freq")
+    #x_axis = phys_map.get_axis("ra")
+    #y_axis = phys_map.get_axis("dec")
+
+    #_yy, _xx = np.meshgrid(y_axis, x_axis)
+    ##dd_f = NearestNDInterpolator(coord, dd)
+
+    #_pp = 0
+    #for i in range(radius_axis.shape[0]):
+    #    if int(10 * i / float(radius_axis.shape[0])) > _pp:
+    #        print '.', 
+    #        _pp = int(10 * i / float(radius_axis.shape[0]))
+    #    #print '%3d '%i,
+    #    _zz = radius_axis[i] * np.ones(_yy.shape)
+    #    _sel  = zz[:, 0] < radius_axis[i] + 1 * info['freq_delta']
+    #    _sel *= zz[:, 0] > radius_axis[i] - 1 * info['freq_delta']
+    #    if np.any(_sel):
+    #        #dd_f = Rbf(xx[_sel], yy[_sel], zz[_sel], dd[_sel], function='linear')
+    #        dd_f = NearestNDInterpolator(coord[_sel], dd[_sel])
+    #        phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
+    #    #phys_map[i] = dd_f(_xx, _yy, _zz)[:, :, 0]
+    #print '. Done'
+
+    ##phys_map_npy = algebra.make_vect(phys_map_npy, axis_names=('freq', 'ra', 'dec'))
+    ##phys_map_npy.info = info
+    #return phys_map, info
 
 def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1, 
         mode='constant'):

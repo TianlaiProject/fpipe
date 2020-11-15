@@ -11,8 +11,10 @@ from scipy.integrate import quad, quadrature
 import matplotlib.pyplot as plt
 
 #__pk_file__ = '/users/ycli/code/camb/output/HI_matterpower.dat'
-__pk_file__ = join(dirname(__file__), 'data/input_matterpower.dat')
-__pk_redshift__ = 0.2
+#__pk_file__ = join(dirname(__file__), 'data/input_matterpower.dat')
+#__pk_redshift__ = 0.2
+__pk_file__ = join(dirname(__file__), 'data/ps_z1.5.dat')
+__pk_redshift__ = 1.5
 
 def grouth_rate():
 
@@ -156,9 +158,9 @@ def CN(q, y, freq0, params, bcast=True, return_beam=False, max_beam=False):
     B_para = np.exp(- ( y * df / 1420. ) ** 2. /  16. / np.log(2.) )
 
     D_dish = params['D_dish']
-    fwhm1400 = 0.9
-    fwhm = 1.2 * fwhm1400 * 1400./ freq * np.pi / 180.
-    #fwhm = const.c.to('m/s').value / (freq * 1.e6) / D_dish
+    #fwhm1400 = 0.9
+    #fwhm = 1.2 * fwhm1400 * 1400./ freq * np.pi / 180.
+    fwhm = 1.2 * const.c.to('m/s').value / (freq * 1.e6) / D_dish
     if max_beam:
         print 'use max beam %f'%fwhm.max()
         fwhm = np.ones_like(fwhm) * fwhm.max()
