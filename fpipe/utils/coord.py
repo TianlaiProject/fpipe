@@ -217,7 +217,8 @@ def egamma_to_cirs_ra(egamma_ra, time):
     cirs_ra = egamma_ra - (gast-theta_earth)
     return cirs_ra
 
-def drift_azalt(time, drift_dec, time_format='unix', drift_mjd0=None, force_meridian=True):
+def drift_azalt(time, drift_dec, time_format='unix', drift_mjd0=None, 
+        force_meridian=True):
 
     '''
 
@@ -234,7 +235,7 @@ def drift_azalt(time, drift_dec, time_format='unix', drift_mjd0=None, force_meri
 
     _t = Time(time, format=time_format, location=_Location)
     if drift_mjd0 is not None:
-        t0 = Time(drift_mjd0, format='mjd')
+        t0 = Time(drift_mjd0, format='mjd', location=_Location)
     else:
         t0 = _t[0]
     ra0 = t0.sidereal_time('apparent')#.to(u.deg)
