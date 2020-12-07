@@ -30,10 +30,9 @@ _Lon = (106. + 51./60. + 24.0/3600.) * u.deg
 _Lat = (25. + 39./60. + 10.6/3600.) * u.deg
 _Location = EarthLocation.from_geodetic(_Lon, _Lat)
 
-
-
 def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None, 
-        drift_dec=None, feed_rotation=0, beam_list = [0, ], block_list = [0, 1],
+        drift_dec=None, drift_mjd0=None, feed_rotation=0, 
+        beam_list = [0, ], block_list = [0, 1],
         fmin=None, fmax=None, degrade_freq_resol=None, noise_cal = [8, 1, 0]):
     
     data_file_list = [[data_path + data_file%(_beam, _block)
@@ -92,7 +91,8 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
                     alt0 = alt_f(fdata.time)
                     az0  = az_f(fdata.time)
                 elif drift_dec is not None:
-                    t, az0, alt0 = coord.drift_azalt(fdata.time, drift_dec)
+                    t, az0, alt0 = coord.drift_azalt(fdata.time, drift_dec, 
+                            drift_mjd0=drift_mjd0)
                     az0  = az0.value
                     alt0 = alt0.value
                 else:

@@ -217,7 +217,7 @@ def egamma_to_cirs_ra(egamma_ra, time):
     cirs_ra = egamma_ra - (gast-theta_earth)
     return cirs_ra
 
-def drift_azalt(time, drift_dec, time_format='unix'):
+def drift_azalt(time, drift_dec, time_format='unix', drift_mjd0=None, force_meridian=True):
 
     '''
 
@@ -226,21 +226,31 @@ def drift_azalt(time, drift_dec, time_format='unix'):
 
     time: obs time UTC, in the formate of time_format; 
     drift_dec: the dec setup at beginning.
-    
+
     Note: time[0] MUST be start time targeting at drift_dec.
           Otherwise, dec is drifting due to the epoch differences.
 
     '''
 
     _t = Time(time, format=time_format, location=_Location)
-    ra0 = _t[0].sidereal_time('apparent')#.to(u.deg)
-    ra0 = egamma_to_cirs_ra(ra0, _t[0])
+    if drift_mjd0 is not None:
+        t0 = Time(drift_mjd0, format='mjd')
+    else:
+        t0 = _t[0]
+    ra0 = t0.sidereal_time('apparent')#.to(u.deg)
+    ra0 = egamma_to_cirs_ra(ra0, t0)
 
     _s = SkyCoord(ra=ra0, dec=drift_dec)
-    altaz_frame = AltAz(obstime=_t[0], location=_Location)
+    altaz_frame = AltAz(obstime=t0, location=_Location)
 
     _s = _s.transform_to(altaz_frame)
     az, alt = _s.az.deg, _s.alt.deg
+    if force_meridian:
+        'force pointing to the meridian'
+        if (az < 90) * (az > -90) + (az > 270):
+            az = 0.
+        else:
+            az = 180.
 
     _t, alt, az = np.broadcast_arrays(_t[:, None], alt, az)
     return _t, az * u.deg, alt * u.deg
