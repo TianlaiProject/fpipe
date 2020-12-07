@@ -201,3 +201,47 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     az = 270. - az
     
     return time, az * u.deg, alt * u.deg
+
+def egamma_to_cirs_ra(egamma_ra, time):
+    '''
+    http://reionization.org/wp-content/uploads/2013/03/HERA_Memo46_lst2ra.html
+    '''
+    from astropy import _erfa as erfa
+    from astropy.coordinates.builtin_frames.utils import get_jd12
+
+    era = erfa.era00(*get_jd12(time, 'ut1'))
+    theta_earth = Angle(era, unit='rad')
+
+    assert(isinstance(time, Time))
+    gast = time.sidereal_time('apparent', longitude=0)
+    cirs_ra = egamma_ra - (gast-theta_earth)
+    return cirs_ra
+
+def drift_azalt(time, drift_dec, time_format='unix'):
+
+    '''
+
+    Assuming meridian drift scan,
+    get the az alt according to the init dec.
+
+    time: obs time UTC, in the formate of time_format; 
+    drift_dec: the dec setup at beginning.
+    
+    Note: time[0] MUST be start time targeting at drift_dec.
+          Otherwise, dec is drifting due to the epoch differences.
+
+    '''
+
+    _t = Time(time, format=time_format, location=_Location)
+    ra0 = _t[0].sidereal_time('apparent')#.to(u.deg)
+    ra0 = egamma_to_cirs_ra(ra0, _t[0])
+
+    _s = SkyCoord(ra=ra0, dec=drift_dec)
+    altaz_frame = AltAz(obstime=_t[0], location=_Location)
+
+    _s = _s.transform_to(altaz_frame)
+    az, alt = _s.az.deg, _s.alt.deg
+
+    _t, alt, az = np.broadcast_arrays(_t[:, None], alt, az)
+    return _t, az * u.deg, alt * u.deg
+
