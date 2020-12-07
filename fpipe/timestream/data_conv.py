@@ -32,10 +32,9 @@ _Location = EarthLocation.from_geodetic(_Lon, _Lat)
 
 
 
-def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=0,
-                  beam_list = [0, ], block_list = [0, 1],
-                  fmin=None, fmax=None, degrade_freq_resol=None,
-                  noise_cal = [8, 1, 0]):
+def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None, 
+        drift_dec=None, feed_rotation=0, beam_list = [0, ], block_list = [0, 1],
+        fmin=None, fmax=None, degrade_freq_resol=None, noise_cal = [8, 1, 0]):
     
     data_file_list = [[data_path + data_file%(_beam, _block)
                        for _block in block_list] for _beam in beam_list]
@@ -89,8 +88,17 @@ def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=
                 #        time_format='unix', feed_rotation=feed_rotation)
                 #ra, dec = get_pointing_meridian_scan(fdata.time, alt, az,
                 #        time_format='unix', feed_rotation=feed_rotation)
-                alt0 = alt_f(fdata.time)
-                az0  = az_f(fdata.time)
+                if alt_f is not None:
+                    alt0 = alt_f(fdata.time)
+                    az0  = az_f(fdata.time)
+                elif drift_dec is not None:
+                    t, az0, alt0 = coord.drift_azalt(fdata.time, drift_dec)
+                    az0  = az0.value
+                    alt0 = alt0.value
+                else:
+                    msg = 'alt_f/az_f or drift_dec is needed'
+                    raise IOError(msg)
+
                 az, alt, ra, dec = coord.get_pointing_any_scan(fdata.time, 
                         alt0, az0, time_format='unix', feed_rotation=feed_rotation)
 

@@ -7,7 +7,7 @@ from Cython.Distutils import build_ext
 import numpy as np
 
 REQUIRES = ['numpy', 'scipy', 'matplotlib', 'h5py', 'healpy',
-        'pyephem', 'aipy', 'caput', 'cora', 'tlpipe']
+        'pyephem', 'aipy', 'caput', 'cora', ]
 
 # Don't install requirements if on ReadTheDocs build system.
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
@@ -31,7 +31,12 @@ setup(
     #                       depends=["setup.py",
     #                                "fpipe/map/cubicspline.pyx"]),
     #            ],
+<<<<<<< HEAD
     #cmdclass={'build_ext': build_ext},
+=======
+    ext_modules = [],
+    cmdclass={'build_ext': build_ext},
+>>>>>>> 82f50d787497ec1d96f1bedb69c8f5d9e3b6b3a5
 
     install_requires = requires,
     package_data = {},
