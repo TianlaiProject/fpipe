@@ -31,10 +31,10 @@ def iter_ps_list(ps_path, ps_name_list, tr_path=None, cross=True,
         ps_name = ps_name_list[ps_keys[ii]]
         if tr_path is not None:
             ps_name, tr_name = ps_name
-            if tr_name is not None:
-                tr_ref_name = os.path.dirname(tr_name) + '/ps_raw.h5'
-            else:
-                tr_path = None
+        #    if tr_name is not None:
+        #        tr_ref_name = os.path.dirname(tr_name) + '/ps_raw.h5'
+        #    else:
+        #        tr_path = None
 
         with h5.File(ps_path + ps_name, 'r') as f:
             
@@ -60,10 +60,14 @@ def iter_ps_list(ps_path, ps_name_list, tr_path=None, cross=True,
                 ps1d *= 1.e6
 
             if tr_path is not None:
-                tr = load_2dtr_from3d(ps_path, tr_name, tr_ref_name, 
-                        kbin_x_edges=x, kbin_y_edges=y)[0]
+
+                tr, x, y = load_2dtr(tr_path, tr_name, 'ps_raw.h5', 
+                        cross=cross, lognorm=False)
+                #tr = load_2dtr_from3d(ps_path, tr_name, tr_ref_name, 
+                #tr =    kbin_x_edges=x, kbin_y_edges=y)[0]
                 if not cross: tr  **= 2.
-                ps2d *= tr
+                tr[tr==0] = np.inf
+                ps2d /= tr
 
             if to1d:
                 ps1d_kbin_edges = f['kbin_edges'][:]
@@ -365,7 +369,7 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
     #----------------------------
 
 def load_2dtr(ps_path, ps_name, ps_ref, cross=False, lognorm=False):
-    
+
     with h5.File(ps_path + ps_ref, 'r') as f:
         ps2d_ref = al.make_vect(al.load_h5(f, 'binavg_2d'))
         ps2d_ref = np.mean(ps2d_ref, axis=0)
