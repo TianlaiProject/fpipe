@@ -81,7 +81,8 @@ def get_calibrator_spec(freq, cal_data_path='', cal_data=None,
         eta   = 0.6 #0.9
 
     #print 'Jy2K : %f'%(mJy2K[-1] * 1.e3)
-    cal_T = cal_flux * mJy2K(freq, eta, beam_off) # in K
+    #cal_T = cal_flux * mJy2K(freq, 0.83, beam_off) # in K
+    cal_T = cal_flux * 16.0e-3
 
     return cal_T #, cal_T * factor
 
