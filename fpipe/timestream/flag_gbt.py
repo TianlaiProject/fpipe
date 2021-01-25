@@ -23,6 +23,7 @@ class Flag(timestream_task.TimestreamTask):
                     'freq_sigma_thres': 6.0,
                     'badness_thres': 0.1,
                     'time_cut': 40,
+                    'freq_cut': 10,
                     'max_itr': 20,
                     'n_bands': 20,
                     'time_bins_smooth': 10.0,
@@ -87,6 +88,9 @@ class Flag(timestream_task.TimestreamTask):
     def rfi_flagging_freq(self, data, bad_freq_list):
 
         freq_sigma_thres = self.params['freq_sigma_thres']
+        freq_cut = self.params['freq_cut']
+
+        flag_size = freq_cut
 
         spec_time_ava = np.ma.mean(data, axis=0)
         sig = np.ma.std(spec_time_ava, axis=0)
@@ -98,9 +102,10 @@ class Flag(timestream_task.TimestreamTask):
             if np.any(spec_time_ava[freq, :, :] > max_accepted[:, :]):
                 amount_masked += 1
                 bad_freq_list.append(freq)
-        data[:, bad_freq_list, :, :] = np.ma.masked
+        for freq in bad_freq_list:
+            data[:, (freq-flag_size):(freq+flag_size), :, :] = np.ma.masked
         num_mask = np.ma.count_masked(data)
-        print("mask number = ", amount_masked, num_mask)
+        print("mask freq number = ", amount_masked, num_mask)
 
         return amount_masked
 
@@ -113,13 +118,17 @@ class Flag(timestream_task.TimestreamTask):
 
         spec_freq_ava = np.ma.mean(data, axis=1)
         sig = np.ma.std(spec_freq_ava, axis=0)
-        max_accepted = np.ma.means(spec_freq_ava, axis=0) + time_sigma_thres*sig
+        max_accepted = np.ma.mean(spec_freq_ava, axis=0) + time_sigma_thres*sig
         bad_times = []
+        amount_masked = 0
         for time in range(0, data.shape[0]):
-            if((spec_freq_ava[time, :, :] > max_accepted[:, :])):
+            if np.any(spec_freq_ava[time, :, :] > max_accepted[:, :]):
+                amount_masked += 1
                 bad_times.append(time)
         for time in bad_times:
             data[(time-flag_size):(time+flag_size), :, :, :] = np.ma.masked
+        num_mask = np.ma.count_masked(data)
+        print("mask time number = ", amount_masked, num_mask)
 
     def filter_foregrounds(self, data):
         n_bands = self.params['n_bands']
