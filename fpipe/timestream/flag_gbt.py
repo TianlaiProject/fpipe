@@ -27,6 +27,7 @@ class Flag(timestream_task.TimestreamTask):
                     'max_itr': 20,
                     'n_bands': 20,
                     'time_bins_smooth': 10.0,
+                    'block_length' : 600,
                   }
 
     prefix = 'fgbt_'
@@ -39,48 +40,65 @@ class Flag(timestream_task.TimestreamTask):
 
         badness_thres = self.params['badness_thres']
         max_itr = self.params['max_itr']
+        block_length = self.params['block_length']
+        total_length = ts.local_vis.shape[0]
 
-        data1 = np.ma.array(ts.local_vis.copy(), mask=ts.local_vis_mask.copy())
-        itr = 0
-        bad_freqs = []
-        amount_masked = -1 # For recursion
-        while not (amount_masked == 0) and itr < max_itr:
-            amount_masked = self.rfi_flagging_freq(data1, bad_freqs)
-            itr += 1
-        bad_freqs.sort()
-        nchan1 = data1.shape[1]
-        percent_masked1 = float(len(bad_freqs)) / nchan1
-        badness = (percent_masked1 > badness_thres)
-        print("percent masked = ", percent_masked1)
-        if badness:
-            data2 = np.ma.array(ts.local_vis.copy(), mask=ts.local_vis_mask.copy())
-            # Mask the bad times
-            self.rfi_flagging_time(data2)
+        for ii in range(0, total_length, block_length):
+
+            sel = slice(ii, ii + block_length)
+            print sel
+
+            data1 = np.ma.array(ts.local_vis[sel, ...].copy(), 
+                    mask=ts.local_vis_mask[sel, ...].copy())
             itr = 0
             bad_freqs = []
-            amount_masked = -1
+            amount_masked = -1 # For recursion
             while not (amount_masked == 0) and itr < max_itr:
-                amount_masked = self.rfi_flagging_freq(data2, bad_freqs)
+                amount_masked = self.rfi_flagging_freq(data1, bad_freqs)
                 itr += 1
             bad_freqs.sort()
-            nchan2 = data2.shape[1]
-            percent_masked2 = float(len(bad_freqs)) / nchan2
-            badness = (percent_masked1 - percent_masked2) < 0.05
-            if not badness:
+            nchan1 = data1.shape[1]
+            percent_masked1 = float(len(bad_freqs)) / nchan1
+            badness = (percent_masked1 > badness_thres)
+            print("percent masked = ", percent_masked1)
+            if badness:
+                data2 = np.ma.array(ts.local_vis[sel, ...].copy(), 
+                        mask=ts.local_vis_mask[sel, ...].copy())
+                self.filter_foregrounds(data2)
+                # Mask the bad times
                 itr = 0
+                bad_times = []
+                amount_masked = -1 # For recursion
                 while not (amount_masked == 0) and itr < max_itr:
-                    amount_masked = destroy_with_variance(data2)
+                    amount_masked = self.rfi_flagging_time(data2, bad_times)
                     itr += 1
-                data1 = data2
-        # print("data1 = ", data1)
-        self.filter_foregrounds(data1)
+                itr = 0
+                bad_freqs = []
+                amount_masked = -1
+                while not (amount_masked == 0) and itr < max_itr:
+                    amount_masked = self.rfi_flagging_freq(data2, bad_freqs)
+                    itr += 1
+                bad_freqs.sort()
+                nchan2 = data2.shape[1]
+                percent_masked2 = float(len(bad_freqs)) / nchan2
+                badness = (percent_masked1 - percent_masked2) < 0.05
+                if not badness:
+                    itr = 0
+                    while not (amount_masked == 0) and itr < max_itr:
+                        amount_masked = self.rfi_flagging_freq(data2, bad_freqs)
+                        itr += 1
+                    data1 = data2
+                    print("time flagging applied")
+            # print("data1 = ", data1)
+            self.filter_foregrounds(data1)
 
-        itr = 0
-        while not (amount_masked ==0) and itr < max_itr:
-            amount_masked = self.rfi_flagging_freq(data1, bad_freqs)
-            itr += 1
+            itr = 0
+            while not (amount_masked ==0) and itr < max_itr:
+                amount_masked = self.rfi_flagging_freq(data1, bad_freqs)
+                itr += 1
 
-        ts.local_vis_mask[:] = np.logical_or(ts.local_vis_mask, data1.mask)
+            ts.local_vis_mask[sel, ...] =\
+                    np.logical_or(ts.local_vis_mask[sel, ...], data1.mask)
 
 
         return super(Flag, self).process(ts)
@@ -98,18 +116,21 @@ class Flag(timestream_task.TimestreamTask):
         max_accepted = np.ma.mean(spec_time_ava, axis=0) + max_sig
         amount_masked = 0
         nfreq = np.int(data.shape[1])
+        fmask = np.zeros(nfreq).astype('bool')
         for freq in range(0, nfreq):
             if np.any(spec_time_ava[freq, :, :] > max_accepted[:, :]):
                 amount_masked += 1
-                bad_freq_list.append(freq)
-        for freq in bad_freq_list:
-            data[:, (freq-flag_size):(freq+flag_size), :, :] = np.ma.masked
+                st = max(freq-flag_size, 0)
+                ed = min(freq+flag_size, nfreq)
+                fmask[st:ed] = True
+        data.mask += fmask[None, :, None, None]
+        bad_freq_list += list(np.where(fmask)[0])
         num_mask = np.ma.count_masked(data)
         print("mask freq number = ", amount_masked, num_mask)
 
         return amount_masked
 
-    def rfi_flagging_time(self, data):
+    def rfi_flagging_time(self, data, bad_time_list):
 
         time_sigma_thres = self.params['time_sigma_thres']
         time_cut = self.params['time_cut']
@@ -119,16 +140,20 @@ class Flag(timestream_task.TimestreamTask):
         spec_freq_ava = np.ma.mean(data, axis=1)
         sig = np.ma.std(spec_freq_ava, axis=0)
         max_accepted = np.ma.mean(spec_freq_ava, axis=0) + time_sigma_thres*sig
-        bad_times = []
+        bad_time_list = []
         amount_masked = 0
         for time in range(0, data.shape[0]):
             if np.any(spec_freq_ava[time, :, :] > max_accepted[:, :]):
                 amount_masked += 1
-                bad_times.append(time)
-        for time in bad_times:
-            data[(time-flag_size):(time+flag_size), :, :, :] = np.ma.masked
+                bad_time_list.append(time)
+        for time in bad_time_list:
+            st = max(time-flag_size, 0)
+            ed = min(time+flag_size, data.shape[0])
+            data[st:ed, :, :, :] = np.ma.masked
         num_mask = np.ma.count_masked(data)
         print("mask time number = ", amount_masked, num_mask)
+
+        return amount_masked
 
     def filter_foregrounds(self, data):
         n_bands = self.params['n_bands']
