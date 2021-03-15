@@ -13,6 +13,55 @@ from scipy import interpolate
 
 import matplotlib.pyplot as plt
 
+class Bandpass_Cal(timestream_task.TimestreamTask):
+    """
+    """
+
+    params_init = {
+            'noise_on_time': 2,
+            'bandpass_file' : None,
+            #'bandpass_smooth' : 51,
+            #'timevars_poly' : 4,
+            #'Tnoise_file'   : None,
+            #'T_sys' : None,
+            #'plot_spec' : False,
+            }
+
+    prefix = 'bpcal_'
+
+    def process(self, ts):
+
+        show_progress = self.params['show_progress']
+        progress_step = self.params['progress_step']
+
+
+        func = ts.bl_data_operate
+        func(self.cal_data, full_data=True, copy_data=False, 
+                show_progress=show_progress, 
+                progress_step=progress_step, keep_dist_axis=False)
+
+        return super(Bandpass_Cal, self).process(ts)
+
+    def cal_data(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        with h5py.File(self.params['bandpass_file'], 'r') as f:
+            _bandpass = f['bandpass'][:, bl[0]-1, :, :]
+            _bandfreq = f['freq'][:]
+            _bandpass = np.median(_bandpass, axis=0)
+            print bl[0] - 1, _bandpass.shape
+
+            bandpass_interp = interpolate.interp1d(_bandfreq, _bandpass, axis=0)
+            bandpass = bandpass_interp(ts['freq'][:])
+
+        # smooth the bandpass to remove some RFI
+        #bandpass[:,0] = medfilt(bandpass[:,0], kernel_size=kernel_size)
+        #bandpass[:,1] = medfilt(bandpass[:,1], kernel_size=kernel_size)
+
+        bandpass[bandpass==0] = np.inf
+
+        vis /= bandpass[None, ...]
+
+
 class Apply_EtaA(timestream_task.TimestreamTask):
 
     params_init = {
@@ -205,7 +254,7 @@ def polyfit_timedrift(vis1, time, on, poly_order, poly_len=2048):
     poly_yy = np.concatenate(poly_yy)
     return poly_xx, poly_yy
 
-class Bandpass_Cal(timestream_task.TimestreamTask):
+class Bandpass_Cal_old(timestream_task.TimestreamTask):
     """
     """
 
@@ -218,7 +267,7 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
             'plot_spec' : False,
             }
 
-    prefix = 'bpcal_'
+    prefix = 'bpcalold_'
 
     def process(self, ts):
 
