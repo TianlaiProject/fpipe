@@ -4,9 +4,10 @@ import numpy as np
 import scipy as sp
 import healpy as hp
 import h5py
+from scipy import interpolate
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, EarthLocation
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz 
 
 from tlpipe.pipeline import pipeline
 from tlpipe.utils.path_util import output_path
@@ -124,6 +125,7 @@ class SurveySim(pipeline.TaskBase):
         else:
             self.mock_n = self.params['mock_n']
             freq  = self.params['freq']
+            self.HI_mock_ids = range(self.mock_n)
 
         dfreq = freq[1] - freq[0]
         freq_n = freq.shape[0]
@@ -192,7 +194,7 @@ class SurveySim(pipeline.TaskBase):
 
         _sky = np.zeros((mock_n, block_n, freq_n, len(self.ants))) + self.params['T_rec']
 
-        if self.params['FG'] is not None:
+        if self.params['FG'] :
             logger.info( "add syn")
             syn_model_nside = hp.npix2nside(self.syn_model.shape[0])
             for bb in range(radec_shp[1]):
@@ -620,7 +622,7 @@ class DriftScan(ScanMode):
         start_az_list  = np.array(self.sche['AZ']) * u.deg
         start_alt_list = np.array(self.sche['Alt']) * u.deg
         for ii in range(len(starttime_list)):
-            starttime = Time(starttime_list[ii])
+            starttime = Time(starttime_list[ii], scale='utc')
             alt_start = start_alt_list[ii]
             az_start  = start_az_list[ii]
             obs_len   = int((block_time[ii] / obs_int).decompose().value) 
@@ -722,7 +724,7 @@ class RealOBS(ScanMode):
 
             obstime = obstime.replace('(UTC)', '')
             obstime = obstime.replace('/', '-')
-            t_list  = Time(obstime, format='fits')
+            t_list  = Time(obstime)
             t_list += np.arange(block_n) * inttime * u.s
 
             _c = SkyCoord(ra=ra_list, dec=dec_list, frame='icrs')
@@ -741,3 +743,56 @@ class RealOBS(ScanMode):
         self.alt_list = np.concatenate(self.alt_list) * u.deg
 
         self.sche = np.array(block_time, dtype=[('block_time', 'f8'), ])
+
+class RealOBSc(RealOBS):
+
+    def generate_altaz(self):
+
+        block_time = []
+
+        #self.t_list   = []
+        #self.az_list  = []
+        #self.alt_list = []
+
+        obstime = None
+        ra_list = []
+        dec_list = []
+        block_n = 0
+
+        for fname in self.obsfiles:
+
+            with h5py.File(fname, 'r') as df:
+
+                inttime = df.attrs['inttime']
+                _obstime = df.attrs['obstime']
+                ra = df['ra'][:, 0] #* u.deg
+                dec= df['dec'][:, 0] #* u.deg
+
+            self.obs_int = inttime * u.s
+
+            block_n += ra.shape[0]
+
+            _obstime = _obstime.replace('(UTC)', '')
+            _obstime = _obstime.replace('/', '-')
+            if obstime is None:
+                obstime = _obstime
+            elif obstime != _obstime:
+                raise ValueError('Obstime not the same')
+
+            ra_list  += list(ra)
+            dec_list += list(dec)
+
+        self.t_list  = Time(obstime)
+        self.t_list += np.arange(block_n) * self.obs_int
+
+        ra_list  = np.array(ra_list)  * u.deg
+        dec_list = np.array(dec_list) * u.deg
+
+
+        _c = SkyCoord(ra=ra_list, dec=dec_list, frame='icrs')
+        _c = _c.transform_to(AltAz(obstime=self.t_list, location=self.location))
+
+        self.az_list  = _c.altaz.az.deg  * u.deg
+        self.alt_list = _c.altaz.alt.deg * u.deg
+
+        self.sche = np.array([block_n * self.obs_int], dtype=[('block_time', 'f8'), ])
