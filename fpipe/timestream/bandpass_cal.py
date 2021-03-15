@@ -403,11 +403,12 @@ class Bandpass_Cal_old(timestream_task.TimestreamTask):
 
 
 
-def get_Ncal(vis, vis_mask, on, on_t):
+def get_Ncal(vis, vis_mask, on, on_t, off_t=1, cut_end=True):
 
-    # remove the cal at the beginning/ending
-    on[ :on_t] = False
-    on[-on_t:] = False
+    if cut_end:
+        # remove the cal at the beginning/ending
+        on[ :on_t] = False
+        on[-on_t:] = False
     if on_t == 2:
         # noise cal may have half missing, because of the RFI flagging
         # remove them
@@ -418,18 +419,22 @@ def get_Ncal(vis, vis_mask, on, on_t):
         vis1_off = vis[off, ...].data
         mask     = vis_mask[off, ...]
     elif on_t == 1:
-        off = np.roll(on, 1) + np.roll(on, -1)
+        off = np.zeros_like(on, dtype='bool')
+        for i in range(off_t):
+            off += np.roll(on, i+2) + np.roll(on, -i-2)
         vis1_on  = vis[on, ...].data
         vis1_off = vis[off, ...].data
         # because the nearby time are masked, we use futher ones.
-        mask_off = np.roll(on, 2) + np.roll(on, -2)
+        mask_off = np.zeros_like(on, dtype='bool')
+        for i in range(off_t):
+            mask_off += np.roll(on, i+2) + np.roll(on, -i-2)
         mask     = vis_mask[mask_off, ...]
 
         vis_shp = vis1_off.shape
-        vis1_off = vis1_off.reshape( (-1, 2) + vis_shp[1:] )
+        vis1_off = vis1_off.reshape( (-1, 2 * off_t) + vis_shp[1:] )
         vis1_off = np.ma.mean(vis1_off, axis=1)
 
-        mask    = mask.reshape((-1, 2) + vis_shp[1:])
+        mask    = mask.reshape((-1, 2 * off_t) + vis_shp[1:])
         mask    = np.sum(mask, axis=1).astype('bool')
     else:
         raise

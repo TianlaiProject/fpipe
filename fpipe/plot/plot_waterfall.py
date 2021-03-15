@@ -160,8 +160,12 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
                 x_label = 'R.A.' 
                 print 'RA range [%6.2f, %6.2f]'%( x_axis.min(), x_axis.max())
             else:
-                time = ts['sec1970'] + ts.attrs['sec1970']
-                x_axis = [ datetime.fromtimestamp(s) for s in time]
+                time = ts['sec1970'] #+ 
+                try:
+                    time += ts.attrs['sec1970']
+                except KeyError:
+                    pass
+                x_axis = [ datetime.utcfromtimestamp(s) for s in time]
                 x_label = 'UTC %s' % x_axis[0].date()
                 # convert datetime objects to the correct format for 
                 # matplotlib to work with

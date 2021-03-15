@@ -28,8 +28,13 @@ def get_pointing_any_scan(time, alt0, az0, time_format='unix', feed_rotation=0,
 
     #if alt0 > 90.: alt0=90.
 
+
     alt0 = np.array([alt0, ]).flatten()[:, None]
     az0  = np.array([az0,  ]).flatten()[:, None]
+
+    if not hasattr(feed_rotation, '__iter__'):
+        feed_rotation = [feed_rotation, ] * alt0.shape[0]
+    feed_rotation = np.array(feed_rotation)[:, None]
 
     alt0[alt0>90] = 90.
 
@@ -58,10 +63,11 @@ def get_pointing_any_scan(time, alt0, az0, time_format='unix', feed_rotation=0,
     separation = np.sqrt(x_position ** 2 + y_position ** 2) * u.arcmin
     position_angle  = np.arctan2(x_position, y_position) * u.rad 
 
-    position_angle += feed_rotation * u.deg
+    position_angle = position_angle[None, :]
+
+    position_angle = position_angle + feed_rotation * u.deg
 
     separation = separation[None, :]
-    position_angle = position_angle[None, :]
     
     separation = separation.to(u.radian).value
     position_angle = position_angle.to(u.radian).value
@@ -201,6 +207,34 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     az = 270. - az
     
     return time, az * u.deg, alt * u.deg
+
+def load_rotation_angle(coord_file, min_row=2, max_row=None):
+
+    wb = load_workbook(coord_file)
+    datasheet = wb[u'\u6574\u63a7-\u9988\u6e90\u8231\u6570\u636e']
+    if max_row is None:
+        max_row = datasheet.max_row
+    time = [col for col in datasheet.iter_cols(min_col=1, max_col=1,
+                                               min_row=min_row, max_row=max_row,
+                                               values_only=True)]
+    time = np.array(time).flatten()
+    time = Time(time) - 8. * u.hour # convert from Bejing time to UTC
+
+
+    data_col_min = 19
+    data_col_max = 19
+    data_name = [col for col in datasheet.iter_cols(min_col=data_col_min, max_col=data_col_max,
+                                                    min_row=1, max_row=1,
+                                                    values_only=True)]
+    data = [col for col in datasheet.iter_cols(min_col=data_col_min, max_col=data_col_max,
+                                               min_row=min_row, max_row=max_row,
+                                               values_only=True)]
+    print 'read ant. coord %s '%(tuple([x[0] for x in data_name]))
+
+    data = np.array(data[0]) * 180./np.pi
+
+    return time, data * u.deg
+
 
 def egamma_to_cirs_ra(egamma_ra, time):
     '''
