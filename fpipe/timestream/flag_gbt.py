@@ -120,9 +120,12 @@ class Flag(timestream_task.TimestreamTask):
         for freq in range(0, nfreq):
             if np.any(spec_time_ava[freq, :, :] > max_accepted[:, :]):
                 amount_masked += 1
-                st = max(freq-flag_size, 0)
-                ed = min(freq+flag_size, nfreq)
-                fmask[st:ed] = True
+                if flag_size != 0:
+                    st = max(freq-flag_size, 0)
+                    ed = min(freq+flag_size, nfreq)
+                    fmask[st:ed] = True
+                else:
+                    fmask[freq] = True
         data.mask += fmask[None, :, None, None]
         bad_freq_list += list(np.where(fmask)[0])
         num_mask = np.ma.count_masked(data)

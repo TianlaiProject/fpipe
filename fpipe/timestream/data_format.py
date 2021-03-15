@@ -103,9 +103,11 @@ class FASTfits_Spec(object):
         self.history += msg
         
         cal_on = np.zeros(self.data.shape[0]).astype('bool')
-        cal_on = cal_on.reshape(-1, p)
-        cal_on[:, d:l] = True
-        cal_on = cal_on.flatten()
+        #cal_on = cal_on.reshape(-1, p)
+        #cal_on[:, d:l] = True
+        #cal_on = cal_on.flatten()
+        for i in range(l):
+            cal_on[slice(d+i, None, p)] = True
         self.cal_on = cal_on
         self.cal_off = np.roll(cal_on, 1)
 
