@@ -126,7 +126,7 @@ class FASTfits_Spec(object):
         data_shp = (time_n, freq_n, n, pol_n)
 
         data = self.data[:,:freq_n*n,:].reshape(data_shp)
-        mask = self.mask[:,:freq_n*n,;].reshape(data_shp)
+        mask = self.mask[:,:freq_n*n,:].reshape(data_shp)
         data[mask] = 0.
         mask = (~mask).astype('int')
         
