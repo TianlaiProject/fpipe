@@ -125,8 +125,8 @@ class FASTfits_Spec(object):
 
         data_shp = (time_n, freq_n, n, pol_n)
 
-        data = self.data[...,:freq_n*n].reshape(data_shp)
-        mask = self.mask[...,:freq_n*n].reshape(data_shp)
+        data = self.data[:,:freq_n*n,:].reshape(data_shp)
+        mask = self.mask[:,:freq_n*n,;].reshape(data_shp)
         data[mask] = 0.
         mask = (~mask).astype('int')
         
@@ -142,6 +142,41 @@ class FASTfits_Spec(object):
         self.data = data
         self.mask = mask
         self.freq = freq
+
+        self.history += msg
+
+    def rebin_time(self, n=10):
+
+        time_n, freq_n, pol_n = self.data.shape
+
+        time = self.time
+        time_reso = time[1] - time[0]
+        time_n = time_n / n
+        time = time[:time_n*n].reshape(time_n, n)
+        msg  = "Degrade time interval from %16.12f s to %16.12f s\n"%(
+                time_reso, time_reso * n)
+        msg += "By averaging avery %d time stampes\n"%n
+        msg += "Abandon last %d time stamps\n"%(self.data.shape[0] - time_n*n)
+
+        data_shp = (time_n, n, freq_n, pol_n)
+
+        data = self.data[:time_n*n, ...].reshape(data_shp)
+        mask = self.mask[:time_n*n, ...].reshape(data_shp)
+        data[mask] = 0.
+        mask = (~mask).astype('int')
+        
+        time = np.mean(time, axis=1)
+        msg += "time(0) = %16.12f s, dtime = %16.12f s\n"%(
+                time[0], (time[1] - time[0] ))
+        data = np.sum(data, axis=1)
+        norm = np.sum(mask, axis=1) * 1.
+        mask = norm < n * 0.8
+        norm[mask] = np.inf
+        data = data / norm
+        
+        self.data = data
+        self.mask = mask
+        self.time = time
 
         self.history += msg
 

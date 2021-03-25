@@ -32,8 +32,9 @@ _Location = EarthLocation.from_geodetic(_Lon, _Lat)
 
 def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None, 
         drift_dec=None, drift_mjd0=None, feed_rotation=0, 
-        beam_list = [0, ], block_list = [0, 1],
-        fmin=None, fmax=None, degrade_freq_resol=None, noise_cal = [8, 1, 0]):
+        beam_list = [0, ], block_list = [0, 1], fmin=None, fmax=None, 
+        degrade_freq_resol=None, degrade_time_resol=None,
+        noise_cal = [8, 1, 0]):
     
     data_file_list = [[data_path + data_file%(_beam, _block)
                        for _block in block_list] for _beam in beam_list]
@@ -48,10 +49,21 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
         for ii in range(beam_n):
         
             print fmin, fmax
-            fdata = data_format.FASTfits_Spec(data_file_list[ii], fmin, fmax)
-            fdata.flag_cal(*noise_cal)
             if degrade_freq_resol is not None:
+                fdata = data_format.FASTfits_Spec(data_file_list[ii], None, None)
+                if degrade_time_resol is not None:
+                    fdata.rebin_time(degrade_time_resol)
+                fdata.flag_cal(*noise_cal)
                 fdata.rebin_freq(degrade_freq_resol)
+                f_st, f_ed = fdata.freq_truncate(fdata.freq, fmin, fmax)
+                fdata.freq = fdata.freq[f_st:f_ed]
+                fdata.data = fdata.data[:, f_st:f_ed,...]
+                fdata.mask = fdata.mask[:, f_st:f_ed,...]
+            else:
+                fdata = data_format.FASTfits_Spec(data_file_list[ii], fmin, fmax)
+                if degrade_time_resol is not None:
+                    fdata.rebin_time(degrade_time_resol)
+                fdata.flag_cal(*noise_cal)
             print fdata.history
             if ii == 0: history += fdata.history
         
