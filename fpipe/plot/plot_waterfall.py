@@ -32,12 +32,97 @@ from scipy import special
 from tlpipe.rfi import interpolate
 from tlpipe.rfi import gaussian_filter
 
+from fpipe.container.timestream import FAST_Timestream
+from fpipe.utils import axes_utils
+
 import logging
 
 logger = logging.getLogger(__name__)
 
 # tz = pytz.timezone('Asia/Shanghai')
 
+def load_ts(file_list):
+
+    ts = FAST_Timestream(file_list)
+    ts.load_all()
+
+    vis = ts['vis'][:].local_array
+    vis_mask = ts['vis_mask'][:].local_array
+
+    on = ts['ns_on'][:].local_array
+    on = on.astype('bool')
+
+    vis = np.ma.array(vis, mask=vis_mask)
+
+    vis.mask += on[:, None, None, :]
+
+    time = ts['sec1970'][:].local_array
+
+    freq = ts['freq'][:]
+
+    return vis, time, freq
+
+
+def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
+
+    vis  = []
+    mask = []
+    freq = []
+    for ii, _file_list in enumerate(file_list):
+        _vis, time, _freq = load_ts(_file_list)
+        vis.append(_vis)
+        mask.append(_vis.mask)
+        freq.append(_freq)
+
+    vis = np.concatenate(vis, axis=1)
+    mask= np.concatenate(mask, axis=1)
+    freq= np.concatenate(freq)
+
+    time -= time[0]
+    time /= 3600.
+    freq /= 1.e3
+
+    _m = np.ma.mean(vis)
+    _s = np.ma.std(vis)
+    if vmax is None: vmax= _m + 2 * _s
+    if vmin is None: vmin= _m - 2 * _s
+
+    vis = np.ma.array(vis, mask=mask)
+
+    fig, axes = axes_utils.setup_axes(5, 4, colorbar=True)
+
+    for bi in range(19):
+
+        print "Feed%02d "%bi,
+
+        i = bi/4
+        j = bi%4
+
+        ax = axes[bi]
+        im = ax.pcolormesh(time, freq, vis[:, :, pol, bi].T, vmax=vmax, vmin=vmin)
+
+        if i != 4:
+            ax.set_xticklabels([])
+        else:
+            ax.set_xlabel('Time [hr]')
+        if j != 0:
+            ax.set_yticklabels([])
+        else:
+            ax.set_ylabel(r'$\nu$ [GHz]')
+
+
+    print
+    cax = axes[-1]
+    fig.colorbar(im, cax=cax, orientation='horizontal')
+    cax.set_xlabel(r'$T$ [K]')
+    cax.set_title(title)
+
+    print 'output image'
+
+    if output is not None:
+        fig.savefig(output, formate='png')
+
+    fig.clf()
 
 class PlotMeerKAT(timestream_task.TimestreamTask):
 
