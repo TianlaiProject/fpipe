@@ -77,7 +77,9 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title=''):
         ax.plot(xx, gt[:, 0], 'r-', lw=1)
         ax.plot(xx, gt[:, 1], 'b-', lw=1)
 
-        ax.legend(title='Feed %02d'%(bi+1), loc=2)
+        #ax.legend(title='Feed %02d'%(bi+1), loc=2)
+        ax.text(0.04, 0.8, 'Feed %02d'%bi, transform=ax.transAxes,
+                bbox=dict(facecolor='w', alpha=0.5, ec='none'))
         ax.set_ylim(0.81, 1.19)
         ax.set_xlim(xx[1], xx[-1])
         #ax.semilogy()
