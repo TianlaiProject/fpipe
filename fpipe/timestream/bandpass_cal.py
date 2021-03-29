@@ -485,6 +485,94 @@ class Bandpass_Cal_old(timestream_task.TimestreamTask):
             vis /= np.ma.median(vis[~on, ...], axis=(0, 1))[None, None, :]
             vis *= T_sys
 
+def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_path,
+                    blk_st=1, blk_ed=7):
+
+    bandpass_temp = '%s_arcdrift%04d-%04d'
+
+    time_list = []
+    bandpass_combined = []
+    for block_id in range(blk_st, blk_ed+1):
+
+        bandpass, freq, time = load_bandpass(bandpass_path,
+            bandpass_temp%(bandpass_name, block_id, block_id) + '_%s.h5', tnoise_path)
+        time_list.append(time)
+        bandpass = np.ma.array(bandpass, mask=False)
+        #bandpass_smooth = medfilt(bandpass, [1, 201, 1])
+        #bandpass_smooth = np.ma.array(bandpass_smooth, mask=False)
+        bandpass_smooth = smooth_bandpass(bandpass.copy(), axis=1)
+        print bandpass_smooth.shape
+        bandpass_combined.append(bandpass_smooth.copy())
+
+    bandpass_combined = np.array(bandpass_combined)
+    #bandpass_combined = np.median(bandpass_combined, axis=0)
+    print bandpass_combined.shape
+
+    time_list = np.concatenate(time_list)
+    #print time_list
+    #time_list -= time_list[0]
+    #time_list /= 3600.
+
+    output_name = 'bandpass_%s.h5'%(bandpass_name)
+    with h5.File(output_path + output_name, 'w') as f:
+        f['bandpass'] = bandpass_combined
+        f['freq'] = freq
+        f['time'] = time_list
+
+def load_bandpass(bandpass_path, bandpass_temp, tnoise_path=None,
+                  freq_bands=['1050-1150MHz', '1150-1250MHz', '1250-1450MHz']):
+    freq = []
+    bandpass = []
+    for i, f in enumerate(freq_bands):
+        with h5.File(bandpass_path + bandpass_temp%f, 'r') as f:
+            bandpass.append(f['bandpass'][:])
+            freq.append(f['freq'][:])
+            time = f['time'][:]
+    bandpass = np.concatenate(bandpass, axis=1)
+    freq = np.concatenate(freq)
+
+    if tnoise_path is not None:
+
+        with h5.File(tnoise_path + 'Tnosie_M_low.h5', 'r') as f:
+            #print f.keys()
+            tnoise_md = f['Tnoise'][:]
+            tnoise_md_freq = f['freq'][:]
+            tnoise_interp = interp1d(tnoise_md_freq, tnoise_md, axis=0)
+
+    norm = tnoise_interp(freq)
+    norm = np.rollaxis(norm, -1)
+
+    bandpass /= norm
+
+    #print time
+    return bandpass, freq, time
+
+def smooth_bandpass(bandpass, axis=0):
+
+    kernel = [1,] * bandpass.ndim
+    kernel[axis] = 501
+
+    _bandpass_smooth = medfilt(bandpass, kernel)
+    _bandpass_flat = bandpass - _bandpass_smooth
+
+    _bandpass_flat = np.ma.array(_bandpass_flat, mask=False)
+    _s = [slice(None), ] * bandpass.ndim
+    _s[axis] = None
+    _s = tuple(_s)
+    for i in range(5):
+        std = np.ma.std(_bandpass_flat, axis=axis)
+        msk = np.abs(_bandpass_flat) - 3 * std[_s] > 0
+        _bandpass_flat.mask += msk
+
+    msk = _bandpass_flat.mask
+    bandpass[msk] = 0
+    _bandpass_smooth[~msk] = 0
+
+    bandpass += _bandpass_smooth
+
+    b, a = signal.butter( 3, 0.05 * 0.209 )
+
+    return signal.filtfilt(b, a, bandpass, axis=axis)
 
 def ND_statics(file_list, gi=0, on_t=1):
 

@@ -147,3 +147,191 @@ def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None):
 
     if output is not None:
         fig.savefig(output, formate='png')
+
+def plot_bandpass(bandpass_path, bandpass_name, pol=0,
+                  ymin=None, ymax=None, normalize=True, ratio=True, output_path=None):
+    
+    
+    _pol = ['XX', 'YY'][pol]
+    
+    fig = plt.figure(figsize=[12, 8])
+    gs = gridspec.GridSpec(5, 4, left=0.07, bottom=0.07, top=0.97, right=0.97,
+                           figure=fig, wspace=0.0, hspace=0.0)
+    
+    suffix = ''
+    if normalize: suffix += '_norm'
+    if ratio: suffix += '_ratio'
+    bandpass_ref = None
+    time_list = []
+    
+    
+    with h5.File(bandpass_path + bandpass_name + '.h5', 'r') as f:
+        bandpass_combined = f['bandpass'][:]
+        freq     = f['freq'][:]
+        time_list = f['time'][:]
+    
+    #print bandpass_combined.shape
+    cnorm = mpl.colors.Normalize(vmin=0, vmax=bandpass_combined.shape[0])
+    
+    axes = []
+    for b in range(19):
+        i = b/4
+        j = b - i * 4
+            
+        ax = fig.add_subplot(gs[i, j])
+        axes.append(ax)
+    
+    #for block_id in range(blk_st, blk_ed+1):
+    for ii in range(bandpass_combined.shape[0]):
+    
+        #bandpass, freq, time = load_bandpass(bandpass_path, 
+        #    bandpass_temp%(bandpass_name, block_id, block_id) + '_%s.h5', tnoise_path)
+        #time_list.append(time)
+        #bandpass = np.ma.array(bandpass, mask=False)
+        #bandpass_smooth = medfilt(bandpass, [1, 201, 1])
+        #bandpass_smooth = np.ma.array(bandpass_smooth, mask=False)
+        #bandpass_smooth = smooth_bandpass(bandpass.copy(), axis=1)
+        bandpass_smooth = bandpass_combined[ii].copy()
+        
+        if normalize:
+            bandpass_smooth /= np.median(bandpass_smooth, axis=1)[:, None, :]
+            #print bandpass_smooth.min(), bandpass_smooth.max()
+        
+        if ratio:
+            if bandpass_ref is None:
+                bandpass_ref = bandpass_smooth.copy()
+            #print bandpass_ref.min(), bandpass_ref.max()
+            bandpass_smooth /= bandpass_ref.copy()
+            ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+        else:
+            ylabel = r'$g(\nu, t)$'
+        
+        for b in range(19):
+            ax = axes[b]
+            #ax.plot(freq, bandpass[b, :, pol], '-', color='0.5', lw=0.2)
+            ax.plot(freq, bandpass_smooth[b, :, pol], c=cm.jet(cnorm(ii)), 
+                    lw=0.8)
+
+            ax.set_ylim(ymin, ymax)
+            ax.set_xlim(freq.min(), freq.max())
+            
+            if ii == 0:
+                ax.text(0.70, 0.9, 'Feed%02d %s'%(b, _pol), transform=ax.transAxes)
+            
+            if i != 4:
+                ax.set_xticklabels([])
+            else:
+                ax.set_xlabel('Frequency [MHz]')
+            
+            if j != 0:
+                ax.set_yticklabels([])
+            else:
+                ax.set_ylabel(ylabel)
+
+    if not ratio:
+        bandpass_combined = np.median(bandpass_combined, axis=0)
+        bandpass_combined = medfilt(bandpass_combined, [1, 201, 1])
+        if normalize:
+            bandpass_combined /= np.median(bandpass_combined, axis=1)[:, None, :]
+        for b in range(19):
+            axes[b].plot(freq, bandpass_combined[b, :, pol], c='k', lw=0.5)
+
+    #print time_list
+    time_list -= time_list[0]
+    time_list /= 3600.
+    tnorm = mpl.colors.Normalize(vmin=time_list.min(), vmax=time_list.max())
+
+    sm = cm.ScalarMappable(cmap=cm.jet, norm=tnorm)
+    # fake up the array of the scalar mappable. Urgh...
+    sm._A = []
+    
+    #ax = fig.add_subplot(gs[-1, -1])
+    cax = fig.add_axes([0.76, 0.18, 0.20, 0.01])
+    fig.colorbar(sm, cax=cax, orientation='horizontal')
+    cax.set_xlabel('Time [hr]')
+    if output_path is not None:
+        output_name = '%s_%s%s.pdf'%(bandpass_name, _pol, suffix)
+        fig.savefig(output_path + output_name)
+        
+def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
+                      ymin=None, ymax=None, normalize=True, ratio=True, 
+                      output_path=None):
+    
+    
+    _pol = ['XX', 'YY'][pol]
+    b = feed
+    
+    fig = plt.figure(figsize=[5, 3])
+    gs = gridspec.GridSpec(1, 1, left=0.12, bottom=0.15, top=0.95, right=0.95,
+                           figure=fig, wspace=0.0, hspace=0.0)
+    ax = fig.add_subplot(gs[0, 0])
+    
+    suffix = ''
+    if normalize: suffix += '_norm'
+    if ratio: suffix += '_ratio'
+    bandpass_ref = None
+    time_list = []
+
+    with h5.File(bandpass_path + bandpass_name + '.h5', 'r') as f:
+        bandpass_combined = f['bandpass'][:]
+        freq     = f['freq'][:]
+        time_list = f['time'][:]
+    
+    #print bandpass_combined.shape
+    cnorm = mpl.colors.Normalize(vmin=0, vmax=bandpass_combined.shape[0])
+
+    #for block_id in range(blk_st, blk_ed+1):
+    for ii in range(bandpass_combined.shape[0]):
+
+        bandpass_smooth = bandpass_combined[ii].copy()
+        
+        if normalize:
+            bandpass_smooth /= np.median(bandpass_smooth, axis=1)[:, None, :]
+            #print bandpass_smooth.min(), bandpass_smooth.max()
+        
+        if ratio:
+            if bandpass_ref is None:
+                bandpass_ref = bandpass_smooth.copy()
+            #print bandpass_ref.min(), bandpass_ref.max()
+            bandpass_smooth /= bandpass_ref.copy()
+            ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+        else:
+            ylabel = r'$g(\nu, t)$'
+
+        ax.plot(freq, bandpass_smooth[b, :, pol], c=cm.jet(cnorm(ii)), 
+                lw=0.8)
+
+        ax.set_ylim(ymin, ymax)
+        ax.set_xlim(freq.min(), freq.max())
+        
+        if ii == 0:
+            ax.text(0.70, 0.9, 'Feed%02d %s'%(b, _pol), transform=ax.transAxes)
+
+            ax.set_xlabel('Frequency [MHz]')
+            ax.set_ylabel(ylabel)
+            ax.minorticks_on()
+
+    if not ratio:
+        bandpass_combined = np.median(bandpass_combined, axis=0)
+        #bandpass_combined = medfilt(bandpass_combined, [1, 201, 1])
+        if normalize:
+            bandpass_combined /= np.median(bandpass_combined, axis=1)[:, None, :]
+        ax.plot(freq, bandpass_combined[b, :, pol], c='k', lw=1.0)
+
+    ##print time_list
+    #time_list -= time_list[0]
+    #time_list /= 3600.
+    #tnorm = mpl.colors.Normalize(vmin=time_list.min(), vmax=time_list.max())
+
+    #sm = cm.ScalarMappable(cmap=cm.jet, norm=tnorm)
+    ## fake up the array of the scalar mappable. Urgh...
+    #sm._A = []
+    #
+    ##ax = fig.add_subplot(gs[-1, -1])
+    #cax = fig.add_axes([0.76, 0.18, 0.20, 0.01])
+    #fig.colorbar(sm, cax=cax, orientation='horizontal')
+    #cax.set_xlabel('Time [hr]')
+    if output_path is not None:
+        output_name = '%s_%s%s_F%02d.pdf'%(bandpass_name, _pol, suffix, feed)
+        fig.savefig(output_path + output_name)
+    
