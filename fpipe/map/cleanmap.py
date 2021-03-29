@@ -140,6 +140,7 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
             'save_cov' : False,
             'diag_cov' : True,
             'threshold' : 1.e-3,
+            'healpix' : False,
             }
 
     prefix = 'cm_'
@@ -167,6 +168,9 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
             self.create_dataset_like(-1, 'clean_map',  self.map_tmp)
             self.create_dataset_like(-1, 'noise_diag', self.map_tmp)
             self.create_dataset_like(-1, 'dirty_map',  self.map_tmp)
+            if self.params['healpix']:
+                self.df_out[-1]['map_pix'] = self.df_in[0]['map_pix'][:]
+                self.df_out[-1]['nside']   = self.df_in[0]['nside'][()]
 
         return 1
 
@@ -182,15 +186,24 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
 
         diag_cov  = self.params['diag_cov']
         threshold = self.params['threshold']
-        task_n = np.prod(self.map_shp[:-2])
+        if self.params['healpix']:
+            task_n = np.prod(self.map_shp[:-1])
+        else:
+            task_n = np.prod(self.map_shp[:-2])
+
         for task_ind in mpiutil.mpirange(task_n):
 
 
-            indx = _indx_f(task_ind, self.map_shp[:-2])
+            if self.params['healpix']:
+                map_shp = self.map_shp[-1:]
+                indx = _indx_f(task_ind, self.map_shp[:-1])
+            else:
+                map_shp = self.map_shp[-2:]
+                indx = _indx_f(task_ind, self.map_shp[:-2])
+
             #print mpiutil.rank,  indx
             print "RANK%03d: ("%mpiutil.rank + ("%04d, "*len(indx))%indx + ")"
 
-            map_shp = self.map_shp[-2:]
             _dirty_map = np.zeros(map_shp, dtype=__dtype__)
             if diag_cov:
                 _cov_inv = np.zeros(map_shp, dtype=__dtype__)

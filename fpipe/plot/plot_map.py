@@ -6,6 +6,11 @@ from fpipe.plot import plot_waterfall
 
 import logging
 
+from astropy.io import fits
+from reproject import reproject_from_healpix, reproject_to_healpix
+from astropy.wcs import WCS
+from astropy.visualization.wcsaxes.frame import RectangularFrame, EllipticalFrame
+
 import h5py as h5
 import numpy as np
 import scipy as sp
@@ -28,6 +33,56 @@ logger = logging.getLogger(__name__)
 
 _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
                   "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
+
+
+def plot_map_hp(map_name, map_key='clean_map', imap_shp = (600, 360), 
+        pix=3./60., field_center=(165, 27.8), proj='ZEA', figsize=(14, 2)):
+
+    with h5.File(map_name, 'r') as f:
+        imap = f[map_key][:]
+        #imap = f['dirty_map'][:]
+        pixs = f['map_pix'][:]
+        nside = f['nside'][()]
+    
+    imap_full = np.zeros(hp.nside2npix(nside))
+    imap_full[pixs] = imap[0]
+    imap_full = np.ma.masked_equal(imap_full, 0)
+
+    target_header = "NAXIS   = 2\n"\
+                  + "NAXIS1  = %d\n"%imap_shp[0]\
+                  + "NAXIS2  = %d\n"%imap_shp[1]\
+                  + "CTYPE1  = \'RA---%s\'\n"%proj\
+                  + "CRPIX1  = %d\n"%(imap_shp[0]/2)\
+                  + "CRVAL1  = %f\n"%field_center[0]\
+                  + "CDELT1  = -%f\n"%pix\
+                  + "CUNIT1  = \'deg\'\n"\
+                  + "CTYPE2  = \'DEC--%s\'\n"%proj\
+                  + "CRPIX2  = %d\n"%(imap_shp[1]/2)\
+                  + "CRVAL2  = %f\n"%field_center[1]\
+                  + "CDELT2  = %f\n"%pix\
+                  + "CUNIT2  = \'deg\'\n"\
+                  + "COORDSYS= \'icrs\'"
+
+    target_header = fits.Header.fromstring(target_header, sep = '\n')
+
+    array, footprint = reproject_from_healpix((imap_full, 'icrs'), target_header, 
+            nested=False)
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_axes([0.07, 0.1, 0.9, 0.8], projection=WCS(target_header),
+                      frame_class=RectangularFrame)
+    #array = np.ma.masked_invalid(footprint)
+    array = np.ma.masked_invalid(array)
+    array[array==0] = np.ma.masked
+    ax.pcolormesh(array, cmap='hot')
+    ax.minorticks_on()
+    ax.set_aspect('equal')
+    ax.coords[0].set_major_formatter('hh')
+    ax.coords[0].set_axislabel('R.A. (J2000)', minpad=0.5)
+    ax.coords[1].set_major_formatter('dd:mm')
+    ax.coords[1].set_axislabel('Dec. (J2000)', minpad=0.5)
+    ax.coords.grid(color='black', linestyle='--', lw=0.5)
+
+
 def load_maps_npy(dm_path, dm_file):
 
     #with h5.File(dm_path+dm_file, 'r') as f:

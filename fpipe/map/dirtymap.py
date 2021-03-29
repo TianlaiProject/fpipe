@@ -81,35 +81,16 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
 
     def setup(self):
 
-        params = self.params
-        self.n_ra, self.n_dec = params['map_shape']
-        self.map_shp = (self.n_ra, self.n_dec)
-        self.spacing = params['pixel_spacing']
-        self.dec_spacing = self.spacing
-        # Negative sign because RA increases from right to left.
-        self.ra_spacing = -self.spacing/sp.cos(params['field_centre'][1]*sp.pi/180.)
+        pass
 
-        axis_names = ('ra', 'dec')
-        map_tmp = np.zeros(self.map_shp, dtype=__dtype__)
-        map_tmp = al.make_vect(map_tmp, axis_names=axis_names)
-        map_tmp.set_axis_info('ra',   params['field_centre'][0], self.ra_spacing)
-        map_tmp.set_axis_info('dec',  params['field_centre'][1], self.dec_spacing)
-        self.map_tmp = map_tmp
+    def init_ps_datasets(self, ts):
+
+        pass
 
     def process(self, ts):
 
         show_progress = self.params['show_progress']
         progress_step = self.params['progress_step']
-
-        ra_axis  = self.map_tmp.get_axis('ra')
-        dec_axis = self.map_tmp.get_axis('dec')
-        if mpiutil.rank0:
-            msg = 'RANK %03d:  RA  Range [%5.2f, %5.2f] deg'%(
-                    mpiutil.rank, ra_axis.min(), ra_axis.max())
-            logger.info(msg)
-            msg = 'RANK %03d:  Dec Range [%5.2f, %5.2f] deg\n'%(
-                    mpiutil.rank, dec_axis.min(), dec_axis.max())
-            logger.info(msg)
 
         if self.params['save_localHI']:
             if mpiutil.rank0:
@@ -213,8 +194,8 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
                 #_vis_mask += (_vis - 3 * np.sqrt(_vars[None, ...])) > 0.
                 #_vis[_vis_mask] = 0.
                 msg = 'min vars = %f, max vars = %f'%(_vars.min(), _vars.max())
-                #logger.debug(msg)
-                logger.info(msg)
+                logger.debug(msg)
+                #logger.info(msg)
                 #_vars[_bad] = T_infinity ** 2.
                 #_bad = _vars < T_small ** 2
                 #_vars[_bad] = T_small ** 2
@@ -234,6 +215,50 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         #    self.df = h5py.File(output_file, mode='w')
         self.allocate_output(output_file, 'w')
 
+    def map_map(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        pass
+
+    def finish(self):
+
+        if mpiutil.rank0:
+            print 'Finishing MapMaking.'
+
+        mpiutil.barrier()
+
+class MakeMap_FlatSky(DirtyMap):
+
+    def setup(self):
+
+        params = self.params
+        self.n_ra, self.n_dec = params['map_shape']
+        self.map_shp = (self.n_ra, self.n_dec)
+        self.spacing = params['pixel_spacing']
+        self.dec_spacing = self.spacing
+        # Negative sign because RA increases from right to left.
+        self.ra_spacing = -self.spacing/sp.cos(params['field_centre'][1]*sp.pi/180.)
+
+        axis_names = ('ra', 'dec')
+        map_tmp = np.zeros(self.map_shp, dtype=__dtype__)
+        map_tmp = al.make_vect(map_tmp, axis_names=axis_names)
+        map_tmp.set_axis_info('ra',   params['field_centre'][0], self.ra_spacing)
+        map_tmp.set_axis_info('dec',  params['field_centre'][1], self.dec_spacing)
+        self.map_tmp = map_tmp
+
+
+    def process(self, ts):
+
+        ra_axis  = self.map_tmp.get_axis('ra')
+        dec_axis = self.map_tmp.get_axis('dec')
+        if mpiutil.rank0:
+            msg = 'RANK %03d:  RA  Range [%5.2f, %5.2f] deg'%(
+                    mpiutil.rank, ra_axis.min(), ra_axis.max())
+            logger.info(msg)
+            msg = 'RANK %03d:  Dec Range [%5.2f, %5.2f] deg\n'%(
+                    mpiutil.rank, dec_axis.min(), dec_axis.max())
+            logger.info(msg)
+
+        super(MakeMap_FlagSky, self).process(ts)
 
     def init_ps_datasets(self, ts):
 
@@ -391,12 +416,91 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         del _ci, _dm
         gc.collect()
 
-    def finish(self):
+class MakeMap_Ionly(MakeMap_FlatSky):
 
-        if mpiutil.rank0:
-            print 'Finishing MapMaking.'
+    def init_ps_datasets(self, ts):
 
+        ts.lin2I()
+
+        func = super(MakeMap_Ionly, self).init_ps_datasets(ts)
+        return func
+
+class MakeMap_CombineAll(MakeMap_FlatSky):
+
+    def init_ps_datasets(self, ts):
+
+        ts.lin2I()
+
+        ts.main_data_name = self.params['data_sets']
+        n_time, n_freq, n_pol, n_bl = ts.main_data.shape
+        tblock_len = self.params['tblock_len']
+
+        freq = ts['freq']
+        freq_c = freq[n_freq//2]
+        freq_d = freq[1] - freq[0]
+
+        field_centre = self.params['field_centre']
+
+        self.pol = ts['pol'][:]
+        self.bl  = ts['blorder'][:]
+
+        # for now, we assume no frequency corr, and thermal noise only.
+
+        ra_spacing = self.ra_spacing
+        dec_spacing = self.dec_spacing
+
+        axis_names = ('freq', 'ra', 'dec')
+
+        msg = 'init dirty map dsets'
+        logger.debug(msg)
+        dirty_map_shp  = (n_freq, ) +  self.map_shp
+        dirty_map_info = {
+                'ra_delta'    : self.ra_spacing,
+                'ra_centre'   : field_centre[0],
+                'dec_delta'   : self.dec_spacing,
+                'dec_centre'  : field_centre[1],
+                'freq_delta'  : freq_d,
+                'freq_centre' : freq_c,
+                'axes'        : axis_names,
+                }
+        self.map_axis_names = axis_names
+        #self.map_tmp = map_tmp
+
+        self.create_dataset('dirty_map',  dirty_map_shp, dirty_map_info, __dtype__)
+        self.create_dataset('clean_map',  dirty_map_shp, dirty_map_info, __dtype__)
+        self.create_dataset('noise_diag', dirty_map_shp, dirty_map_info, __dtype__)
+
+        self.df['mask'] = np.zeros(n_freq)
+
+        msg = 'init cov dsets'
+        logger.debug(msg)
+        if self.params['diag_cov']:
+            axis_names = ('freq', 'ra', 'dec')
+            cov_shp = (n_freq, ) +  self.map_shp 
+        else:
+            axis_names = ('freq', 'ra', 'dec', 'ra', 'dec')
+            cov_shp = (n_freq, ) +  self.map_shp + self.map_shp
+        cov_info = {
+                'ra_delta'    : self.ra_spacing,
+                'ra_centre'   : field_centre[0],
+                'dec_delta'   : self.dec_spacing,
+                'dec_centre'  : field_centre[1],
+                'freq_delta'  : freq_d,
+                'freq_centre' : freq_c,
+                'axes'        : axis_names,
+                }
+        self.create_dataset('cov_inv', cov_shp, cov_info, __dtype__)
+
+        self.df['pol'] = self.pol
+        self.df['bl']  = self.bl
+
+        #func = ts.freq_pol_and_bl_data_operate
+        func = ts.freq_data_operate
+
+        msg = 'RANK %03d: everything init done'%mpiutil.rank
+        logger.debug(msg)
         mpiutil.barrier()
+        return func
 
 def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, ra_axis, dec_axis, 
         cov_inv_block, dirty_map, diag_cov=False, beam_size=3./60.,  beam_cut = 0.01,):
@@ -572,94 +676,6 @@ def make_cleanmap_GBT(dirty_map, cov_inv_block, threshold=1.e-5):
     gc.collect()
 
     return clean_map, noise_diag
-
-
-
-class MakeMap_Ionly(DirtyMap):
-
-    def init_ps_datasets(self, ts):
-
-        ts.lin2I()
-
-        func = super(MakeMap_Ionly, self).init_ps_datasets(ts)
-        return func
-
-class MakeMap_CombineAll(DirtyMap):
-
-    def init_ps_datasets(self, ts):
-
-        ts.lin2I()
-
-        ts.main_data_name = self.params['data_sets']
-        n_time, n_freq, n_pol, n_bl = ts.main_data.shape
-        tblock_len = self.params['tblock_len']
-
-        freq = ts['freq']
-        freq_c = freq[n_freq//2]
-        freq_d = freq[1] - freq[0]
-
-        field_centre = self.params['field_centre']
-
-        self.pol = ts['pol'][:]
-        self.bl  = ts['blorder'][:]
-
-        # for now, we assume no frequency corr, and thermal noise only.
-
-        ra_spacing = self.ra_spacing
-        dec_spacing = self.dec_spacing
-
-        axis_names = ('freq', 'ra', 'dec')
-
-        msg = 'init dirty map dsets'
-        logger.debug(msg)
-        dirty_map_shp  = (n_freq, ) +  self.map_shp
-        dirty_map_info = {
-                'ra_delta'    : self.ra_spacing,
-                'ra_centre'   : field_centre[0],
-                'dec_delta'   : self.dec_spacing,
-                'dec_centre'  : field_centre[1],
-                'freq_delta'  : freq_d,
-                'freq_centre' : freq_c,
-                'axes'        : axis_names,
-                }
-        self.map_axis_names = axis_names
-        #self.map_tmp = map_tmp
-
-        self.create_dataset('dirty_map',  dirty_map_shp, dirty_map_info, __dtype__)
-        self.create_dataset('clean_map',  dirty_map_shp, dirty_map_info, __dtype__)
-        self.create_dataset('noise_diag', dirty_map_shp, dirty_map_info, __dtype__)
-
-        self.df['mask'] = np.zeros(n_freq)
-
-        msg = 'init cov dsets'
-        logger.debug(msg)
-        if self.params['diag_cov']:
-            axis_names = ('freq', 'ra', 'dec')
-            cov_shp = (n_freq, ) +  self.map_shp 
-        else:
-            axis_names = ('freq', 'ra', 'dec', 'ra', 'dec')
-            cov_shp = (n_freq, ) +  self.map_shp + self.map_shp
-        cov_info = {
-                'ra_delta'    : self.ra_spacing,
-                'ra_centre'   : field_centre[0],
-                'dec_delta'   : self.dec_spacing,
-                'dec_centre'  : field_centre[1],
-                'freq_delta'  : freq_d,
-                'freq_centre' : freq_c,
-                'axes'        : axis_names,
-                }
-        self.create_dataset('cov_inv', cov_shp, cov_info, __dtype__)
-
-        self.df['pol'] = self.pol
-        self.df['bl']  = self.bl
-
-        #func = ts.freq_pol_and_bl_data_operate
-        func = ts.freq_data_operate
-
-        msg = 'RANK %03d: everything init done'%mpiutil.rank
-        logger.debug(msg)
-        mpiutil.barrier()
-        return func
 
 
 def sub_ortho_poly(vis, time, mask, n):
