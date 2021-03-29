@@ -1,5 +1,7 @@
 import numpy as np
+import h5py
 
+from fpipe.timestream import timestream_task
 from scipy import signal
 from scipy.interpolate import interp1d
 
@@ -7,34 +9,86 @@ from fpipe.container.timestream import FAST_Timestream
 
 from fpipe.timestream import bandpass_cal
 
+import matplotlib.pyplot as plt
 
-#def Ctt_fft(fk, alpha, time, ext=1):
-#
-#    dtime = (time[1] - time[0])
-#
-#    f = np.fft.fftfreq(time.shape[0]*ext, dtime)
-#    f[f==0] = np.inf
-#    P  = (0. + (fk / np.abs(f))**alpha )
-#    xi = np.fft.ifft(P, norm='ortho').real * (1./(time.shape[0]*ext * dtime))
-#    x = np.fft.fftfreq(xi.shape[0], 1./(dtime*P.shape[0]))
-#
-#    x = np.fft.fftshift(x)
-#    xi = np.fft.fftshift(xi)
-#
-#    c_interp = interp1d(x, xi, bounds_error=False, fill_value='extrapolate')
-#
-#    tt = time - time[0]
-#
-#    c = c_interp(tt)
-#
-#    C_tt = np.zeros(c.shape * 2)
-#
-#    for i in range(C_tt.shape[0]):
-#        C_tt[i] = np.roll(c, i)
-#
-#    C_tt = np.triu(C_tt, 0) + np.triu(C_tt, 1).T
-#
-#    return C_tt
+
+class TimeVar_Cal(timestream_task.TimestreamTask):
+    """
+    """
+
+    params_init = {
+            'gt_file' : None,
+            'fk' : 0.01,
+            'alpha' : 1.5,
+            'l' : 5,
+            }
+
+    prefix = 'gtcal_'
+
+    def process(self, ts):
+
+        show_progress = self.params['show_progress']
+        progress_step = self.params['progress_step']
+
+
+        func = ts.bl_data_operate
+        func(self.cal_data, full_data=True, copy_data=False, 
+                show_progress=show_progress, 
+                progress_step=progress_step, keep_dist_axis=False)
+
+        return super(TimeVar_Cal, self).process(ts)
+
+    def cal_data(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        fk    = self.params['fk']
+        alpha = self.params['alpha']
+        l     = self.params['l']
+
+        with h5py.File(self.params['gt_file'], 'r') as f:
+            nd= f['gtgnu'][:, :, :, bl[0]-1]
+            freq  = f['freq'][:]
+            nd_time  = f['time'][:]
+            print 'Feed%02d '%(bl[0])
+
+            #bandpass_interp = interpolate.interp1d(_bandfreq, _bandpass, axis=0)
+            #bandpass = bandpass_interp(ts['freq'][:])
+
+        time = ts['sec1970'][:]
+        nd = np.ma.masked_invalid(nd)
+
+        # ignore freq between 1200-1300 due to strong RFI residule
+        nd.mask[:, 200:600, :] = True
+        gt  = np.ma.median(nd, axis=1)
+        var = np.ma.median(nd, axis=1)
+
+        gt_m = np.ma.mean(gt, axis=0)
+        gt_s = np.ma.std(gt, axis=0)
+        # there are still some RFI, flag peaks ove 3 sigma
+        good = np.abs(gt - gt_m[None, :]) - 3 * gt_s[None, :] < 0.
+
+        # remove mean before destriping
+        gt = gt - gt_m[None, :]
+
+        gt_xx = destriping(l, gt[good[:, 0], 0], var[good[:, 0], 0], 
+                nd_time[good[:, 0]], fk, alpha)(time).flatten()
+        gt_yy = destriping(l, gt[good[:, 1], 1], var[good[:, 1], 1], 
+                nd_time[good[:, 1]], fk, alpha)(time).flatten()
+
+        #plt.plot(gt_xx, label='Feed%02d'%bl[0])
+        #plt.plot(gt_yy)
+        #plt.legend()
+        #plt.show()
+
+        # add mean back after destriping
+        gt_xx = gt_xx + gt_m[0]
+        gt_yy = gt_yy + gt_m[1]
+
+        gt_xx[gt_xx==0] = np.inf
+        gt_yy[gt_yy==0] = np.inf
+
+        vis[:, :, 0] /= gt_xx[:, None]
+        vis[:, :, 1] /= gt_yy[:, None]
+
 
 def Ctt(fk, alpha, time):
     '''
