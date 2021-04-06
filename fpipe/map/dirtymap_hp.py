@@ -135,7 +135,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
             vis = np.abs(vis)
 
         time = ts['sec1970'][:]
-        tblock_len = 6000
+        tblock_len = 1000
         n_time, n_pol, n_bl = vis.shape
         ff = gi[0]
         vis_idx = ((bb, pp, ff) for bb in range(n_bl) for pp in range(n_pol))
@@ -219,7 +219,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         
 def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis, nside,
                    ra_range, dec_range, cov_inv_block, dirty_map, diag_cov=False,
-                   beam_size=3./60.,  beam_cut = 0.01,): 
+                   beam_size=3./60.,  beam_cut = 0.01, center_only=False): 
     
     map_shp = pix_axis.shape
     
@@ -246,10 +246,29 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis, nside,
     logger.debug('est. pointing')
     pix = hp.ang2pix(nside, ra, dec, nest=False, lonlat=True)
     
-    P  = (pix_axis - pix[:, None])
-    on = P==0
-    P[on]  = 1.
-    P[~on] = 0.
+    if center_only:
+        P  = (pix_axis - pix[:, None])
+        on = P==0
+        P[on]  = 1.
+        P[~on] = 0.
+    else:
+        pix_size = hp.nside2resol(nside, arcmin=True) / 60.
+        pix = [pix[None, :], hp.get_all_neighbours(nside, ra, dec, lonlat=True)]
+        pix = np.concatenate(pix, axis=0)
+        pix_ra, pix_dec = hp.pix2ang(nside, pix, lonlat=True)
+        w = np.sqrt((pix_ra - ra[None, :]) ** 2 + (pix_dec - dec[None, :]) ** 2)
+        #w[w<1.e-5] = 1.e-5
+        #w = 1. / w
+        w = 1. - w / pix_size
+        w[w<0] = 0.
+        w = w ** 2.
+        w = w / np.sum(w, axis=0)[None, :]
+        P = np.zeros(ra.shape + pix_axis.shape, dtype=__dtype__ )
+        for ii in range(9):
+            on = (pix_axis - pix[ii][:, None]) == 0
+            P[on] = w[ii][np.any(on, axis=1)]
+        del pix, w, pix_ra, pix_dec, on
+
 
     vis_var[vis_var==0] = np.inf #T_infinity ** 2.
     noise_inv_weight = 1. /vis_var

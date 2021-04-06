@@ -22,9 +22,10 @@ else:
 
 class MapBase(object):
 
-    def __init__(self, *args, **kwargs):
+    #def __init__(self, *args, **kwargs):
 
-        self.df = None
+    #    self.df = None
+    df = None
 
     def __del__(self):
 
@@ -61,10 +62,13 @@ class MultiMapBase(object):
     #df_out = []
     #df_in  = []
 
-    def __init__(self,):
+    #def __init__(self,):
 
-        self.df_in  = []
-        self.df_out = []
+    #    self.df_in  = []
+    #    self.df_out = []
+
+    df_in  = []
+    df_out = []
 
     def __del__(self):
 

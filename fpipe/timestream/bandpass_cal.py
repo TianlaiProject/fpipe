@@ -10,6 +10,7 @@ from caput import mpiutil
 from caput import mpiarray
 from scipy.signal import medfilt
 from scipy.signal import lombscargle
+from scipy import signal
 from scipy.ndimage import gaussian_filter1d
 from scipy import interpolate
 from scipy.interpolate import griddata
@@ -605,12 +606,12 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
     nd_mask = []
     freq = []
     for ii, _file_list in enumerate(file_list):
-        print "Freq Band %d; "%ii,
+        #print "Freq Band %d; "%ii,
         _nd, time, _freq = ND_statics(_file_list, gi=gi)
         nd.append(_nd.data)
         nd_mask.append(_nd.mask)
         freq.append(_freq)
-    print
+    #print
 
     nd = np.ma.concatenate(nd, axis=1)
     nd.mask = np.ma.concatenate(nd_mask, axis=1)
@@ -638,7 +639,7 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
     msk = nd.mask[:, :, 0].flatten()
     values = nd[:, :, 0].flatten()[~msk]
     points = xi[~msk, :]
-    nd_xx = griddata(points, values, xi, method='linear')
+    nd_xx = griddata(points, values, xi, method='nearest')
     nd_xx.shape = shp
     nd_xx = median_filter(nd_xx, smooth)
 
@@ -646,7 +647,7 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
     msk = nd.mask[:, :, 1].flatten()
     values = nd[:, :, 1].flatten()[~msk]
     points = xi[~msk, :]
-    nd_yy = griddata(points, values, xi, method='linear')
+    nd_yy = griddata(points, values, xi, method='nearest')
     nd_yy.shape = shp
     nd_yy = median_filter(nd_yy, smooth)
 

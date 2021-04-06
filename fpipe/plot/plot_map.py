@@ -2,7 +2,7 @@
 
 from fpipe.map import algebra as al
 from fpipe.ps import fgrm
-from fpipe.plot import plot_waterfall
+from fpipe.point_source import source
 
 import logging
 
@@ -34,18 +34,42 @@ logger = logging.getLogger(__name__)
 _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
                   "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
 
-
-def plot_map_hp(map_name, map_key='clean_map', imap_shp = (600, 360), 
-        pix=3./60., field_center=(165, 27.8), proj='ZEA', figsize=(14, 2)):
+def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360), 
+        pix=3./60., field_center=(165, 27.8), proj='ZEA', figsize=(14, 2),
+        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
+        nvss_path=None, verbose=True):
 
     with h5.File(map_name, 'r') as f:
-        imap = f[map_key][:]
+        if verbose:
+            print 'Load maps from %s'%map_name
+        #imap = f[map_key][indx]
+        imap = al.load_h5(f, map_key)
+        imap = al.make_vect(imap, axis_names = imap.info['axes'])
         #imap = f['dirty_map'][:]
         pixs = f['map_pix'][:]
         nside = f['nside'][()]
+
+    freq = imap.get_axis('freq')
+    freq = freq[indx[-1]]
+    imap = imap[indx]
+    if isinstance( indx[-1], slice):
+        imap = np.ma.mean(imap, axis=0)
+        freq_label = 'Frequency %5.2f - %5.2f MHz'%(freq[0], freq[-1])
+    else:
+        freq_label = 'Frequency %5.2f MHz'%freq
+
+    return _plot_map_hp(imap, pixs, nside, imap_shp = imap_shp, 
+        pix=pix, field_center=field_center, proj=proj, figsize=figsize,
+        sigma=sigma, vmin=vmin, vmax=vmax, cmap=cmap, axes=axes,
+        nvss_path=nvss_path, title = title + ' ' + freq_label, )
+
+def _plot_map_hp(imap, pixs, nside, imap_shp = (600, 360), 
+        pix=3./60., field_center=(165, 27.8), proj='ZEA', figsize=(14, 2),
+        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
+        nvss_path=None,):
     
     imap_full = np.zeros(hp.nside2npix(nside))
-    imap_full[pixs] = imap[0]
+    imap_full[pixs] = imap
     imap_full = np.ma.masked_equal(imap_full, 0)
 
     target_header = "NAXIS   = 2\n"\
@@ -66,21 +90,76 @@ def plot_map_hp(map_name, map_key='clean_map', imap_shp = (600, 360),
     target_header = fits.Header.fromstring(target_header, sep = '\n')
 
     array, footprint = reproject_from_healpix((imap_full, 'icrs'), target_header, 
-            nested=False)
-    fig = plt.figure(figsize=figsize)
-    ax = fig.add_axes([0.07, 0.1, 0.9, 0.8], projection=WCS(target_header),
-                      frame_class=RectangularFrame)
+            nested=False, order='nearest-neighbor')
+
+    if axes is None:
+        fig = plt.figure(figsize=figsize)
+        ax = fig.add_axes([0.06, 0.1, 0.88, 0.8], projection=WCS(target_header),
+                          frame_class=RectangularFrame)
+        cax = fig.add_axes([0.95, 0.1, 0.01, 0.8])
+    else:
+        fig, rect, cax = axes
+        ax = fig.add_axes(rect, projection=WCS(target_header),
+                          frame_class=RectangularFrame)
     #array = np.ma.masked_invalid(footprint)
     array = np.ma.masked_invalid(array)
     array[array==0] = np.ma.masked
-    ax.pcolormesh(array, cmap='hot')
+
+
+    if sigma is not None:
+        mean = np.ma.mean(array)
+        std  = np.ma.std(array)
+        vmin = mean - sigma * std
+        vmax = mean + sigma * std
+    else:
+        if vmin is None: vmin = array.min()
+        if vmax is None: vmax = array.max()
+
+    im = ax.pcolormesh(array, cmap=cmap, vmin=vmin, vmax=vmax)
+
     ax.minorticks_on()
     ax.set_aspect('equal')
-    ax.coords[0].set_major_formatter('hh')
+    #ax.coords[0].set_ticks(spacing=300 * u.arcmin,)
+    ax.coords[0].set_major_formatter('hh:mm')
+    ax.coords[0].set_separator((r'$^{\rm h}$', r'$^{\rm m}$', r'$^{\rm s}$'))
     ax.coords[0].set_axislabel('R.A. (J2000)', minpad=0.5)
     ax.coords[1].set_major_formatter('dd:mm')
     ax.coords[1].set_axislabel('Dec. (J2000)', minpad=0.5)
     ax.coords.grid(color='black', linestyle='--', lw=0.5)
+
+    ax.set_title( title)
+
+    ticks = list(np.linspace(vmin, vmax, 5))
+    ticks_label = []
+    for x in ticks:
+        ticks_label.append(r"$%5.2f$"%x)
+    fig.colorbar(im, cax=cax, ticks=ticks)
+    cax.set_yticklabels(ticks_label, rotation=90, va='center')
+    cax.minorticks_off()
+    c_label = r'$T\,$ K'
+    cax.set_ylabel(c_label)
+
+    if nvss_path is not None:
+        nvss_range = [
+                field_center[0] - imap_shp[0] * 0.5 * pix, 
+                field_center[0] + imap_shp[0] * 0.5 * pix, 
+                field_center[1] - imap_shp[1] * 0.5 * pix, 
+                field_center[1] + imap_shp[1] * 0.5 * pix, 
+                ]
+        plot_nvss(nvss_path, [nvss_range,], (fig, ax), ms=5, mew=0.2)
+
+    return fig, ax
+
+def plot_nvss(nvss_path, nvss_range, axes, threshold=10., ms=10, mew=1,):
+
+    fig, ax = axes
+
+    nvss_cat = source.get_nvss_radec(nvss_path, nvss_range)
+    nvss_sel = nvss_cat['FLUX_20_CM'] > threshold
+    nvss_ra  = nvss_cat['RA'][nvss_sel]
+    nvss_dec = nvss_cat['DEC'][nvss_sel]
+    ax.plot(nvss_ra, nvss_dec, 'o', mec='k', mfc='none', ms=ms, mew=mew,
+            transform=ax.get_transform('icrs'))
 
 
 def load_maps_npy(dm_path, dm_file):
@@ -259,7 +338,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
     nvss_range = [ [ra_edges.min(), ra_edges.max(), 
                     dec_edges.min(), dec_edges.max()],]
     if nvss_path is not None:
-        nvss_cat = plot_waterfall.get_nvss_radec(nvss_path, nvss_range)
+        nvss_cat = source.get_nvss_radec(nvss_path, nvss_range)
         nvss_sel = nvss_cat['FLUX_20_CM'] > 10.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
@@ -398,7 +477,7 @@ def plot_map(data, indx = (), figsize=(10, 4),
 
     nvss_range = [ [ra_edges.min(), ra_edges.max(), dec_edges.min(), dec_edges.max()],]
     if nvss_path is not None:
-        nvss_cat = plot_waterfall.get_nvss_radec(nvss_path, nvss_range)
+        nvss_cat = source.get_nvss_radec(nvss_path, nvss_range)
         nvss_sel = nvss_cat['FLUX_20_CM'] > 500.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
@@ -629,3 +708,4 @@ def plot_2dps(ps_path, ps_name_list, figsize=(16, 4),title='',
     fig.colorbar(im, ax=ax, cax=cax)
     cax.minorticks_off()
     cax.set_ylabel(r'$P(k)$')
+

@@ -15,6 +15,7 @@ from fpipe.map import mapbase
 import healpy as hp
 import numpy as np
 import scipy as sp
+from scipy.interpolate import interp1d
 #from scipy import linalg
 from numpy.linalg import multi_dot
 from numpy import linalg
@@ -53,7 +54,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
 
             'noise_weight' : True,
 
-            'beam_fwhm_at21cm' : 1.0,
+            'beam_fwhm_at21cm' : 3.0/60.,
             'beam_cut'  : 0.01,
 
             'interpolation' : 'linear',
@@ -69,6 +70,8 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
             'diag_cov' : False,
 
             'save_localHI' : False,
+
+            'baseline_file' : None,
             }
 
     prefix = 'dm_'
@@ -76,7 +79,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
     def __init__(self, *args, **kwargs):
 
         super(DirtyMap, self).__init__(*args, **kwargs)
-        mapbase.MapBase.__init__(self)
+        #mapbase.MapBase.__init__(self)
 
 
     def setup(self):
@@ -153,24 +156,31 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
 
         vis_var = ts['vis_var'].local_data
 
+        baseline_file = self.params['baseline_file'] 
+        if baseline_file is not None:
+            bsl = fit_baseline(vis, vis_mask, time, baseline_file)
+            vis -= bsl
+        else:
+            bsl = np.ones_like(vis)
 
         logger.debug('est. var %d %d'%(n_time, tblock_len))
         _vis = np.ma.array(vis.copy())
         _vis.mask = vis_mask
         median = np.ma.median(_vis, axis=0)
         vis -= median[None, ...]
-        #vis_fit = sub_ortho_poly(vis, time, ~vis_mask.astype('bool') , n_poly)
-        #for i in range(vis_fit.shape[-1]):
-        #    good = vis_fit[:, 0, i] != 0
-        #    plt.plot(np.arange(vis_fit.shape[0])[good], vis_fit[good, 0, i], '.')
-        #    plt.show()
         if self.params['noise_weight']:
             for st in range(0, n_time, tblock_len):
                 et = st + tblock_len
                 _time = time[st:et] #ts['sec1970'][st:et]
-
                 _vis_mask = (vis_mask[st:et,...]).astype('bool')
+                _bsl = bsl[st:et]
+
+                #_fit = sub_ortho_poly(vis[st:et,...], _time, ~_vis_mask, n_poly)
+                #vis[st:et,...] -= _fit
+
                 _vis = vis[st:et,...]
+                _vis = np.ma.array(_vis, mask = _vis_mask)
+                vis[st:et,...] -= np.ma.median(_vis, axis=0)
                 _vis[_vis_mask] = 0.
 
                 # rm bright sources for var est.
@@ -200,8 +210,10 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
                 #_bad = _vars < T_small ** 2
                 #_vars[_bad] = T_small ** 2
                 #vis_var[st:et, li, ...] += _vars[None, :] * vis_fit[st:et, ...]
-                vis_var[st:et, li, ...] += _vars[None, :] * median[None, ...]
+                #vis_var[st:et, li, ...] += _vars[None, :] * median[None, ...]
+                vis_var[st:et, li, ...] += _vars[None, :] #* _bsl
                 #vis_var[st:et, li, ...][_vis_mask, ...] = T_infinity ** 2.
+                #vis_var[st:et, li, ...] += _vars[None, :] #* _fit**2
         else:
             vis_var[:] = 1.
 
@@ -677,6 +689,29 @@ def make_cleanmap_GBT(dirty_map, cov_inv_block, threshold=1.e-5):
 
     return clean_map, noise_diag
 
+def fit_baseline(vis, mask, time, baseline_file):
+
+    logger.info('Load Baseline from: %s'%baseline_file)
+
+    with h5py.File(baseline_file, 'r') as f:
+        bsl  = f['baseline'][:]
+        bsl_time = f['time'][:]
+        
+    bsl_xx = interp1d(bsl_time, bsl, bounds_error=False,
+                      fill_value='extrapolate')(time) + 20.
+    
+    bsl = np.zeros(vis.shape)
+
+    for i in range(19):
+        #window = (~mask[:, 0, i]).astype('int')
+        _msk = mask[:, 0, i]
+        _vis_xx = np.matrix(vis[:, 0, i][:, None])
+    
+        _bsl_xx  = np.matrix(bsl_xx[:, None])
+        a_xx = (_bsl_xx.T * _bsl_xx)**(-1) * _bsl_xx.T * _vis_xx
+        bsl[:, 0, i] = (np.array(a_xx) * np.array(_bsl_xx)).flat
+    
+    return bsl
 
 def sub_ortho_poly(vis, time, mask, n):
 
