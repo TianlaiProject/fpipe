@@ -31,7 +31,7 @@ _Lat = (25. + 39./60. + 10.6/3600.) * u.deg
 _Location = EarthLocation.from_geodetic(_Lon, _Lat)
 
 def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None, 
-        drift_dec=None, drift_mjd0=None, feed_rotation=0, 
+        drift_dec=None, drift_mjd0=None, feed_rotation=0, feed_rotation_f=None,
         beam_list = [0, ], block_list = [0, 1], fmin=None, fmax=None, 
         degrade_freq_resol=None, degrade_time_resol=None,
         noise_cal = [8, 1, 0]):
@@ -110,6 +110,9 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
                 else:
                     msg = 'alt_f/az_f or drift_dec is needed'
                     raise IOError(msg)
+
+                if feed_rotation_f is not None:
+                    feed_rotation = feed_rotation_f(fdata.time)
 
                 az, alt, ra, dec = coord.get_pointing_any_scan(fdata.time, 
                         alt0, az0, time_format='unix', feed_rotation=feed_rotation)

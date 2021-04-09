@@ -263,17 +263,17 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
         bad_time = np.all(vis_mask, axis=(1, 2))
         bad_freq = np.all(vis_mask, axis=(0, 2))
 
-        if np.any(bad_time):
-            good_time_st = np.argwhere(~bad_time)[ 0, 0]
-            good_time_ed = np.argwhere(~bad_time)[-1, 0]
-            vis1 = vis1[good_time_st:good_time_ed, ...]
-            x_axis = x_axis[good_time_st:good_time_ed]
+        #if np.any(bad_time):
+        #    good_time_st = np.argwhere(~bad_time)[ 0, 0]
+        #    good_time_ed = np.argwhere(~bad_time)[-1, 0]
+        #    vis1 = vis1[good_time_st:good_time_ed, ...]
+        #    x_axis = x_axis[good_time_st:good_time_ed]
 
-        if np.any(bad_freq):
-            good_freq_st = np.argwhere(~bad_freq)[ 0, 0]
-            good_freq_ed = np.argwhere(~bad_freq)[-1, 0]
-            vis1 = vis1[:, good_freq_st:good_freq_ed, ...]
-            y_axis = y_axis[good_freq_st:good_freq_ed]
+        #if np.any(bad_freq):
+        #    good_freq_st = np.argwhere(~bad_freq)[ 0, 0]
+        #    good_freq_ed = np.argwhere(~bad_freq)[-1, 0]
+        #    vis1 = vis1[:, good_freq_st:good_freq_ed, ...]
+        #    y_axis = y_axis[good_freq_st:good_freq_ed]
 
 
         if re_scale is not None:

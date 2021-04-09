@@ -43,6 +43,7 @@ class Flag(timestream_task.TimestreamTask):
         block_length = self.params['block_length']
         total_length = ts.local_vis.shape[0]
 
+        print "%d / %d"%(total_length, block_length)
         for ii in range(0, total_length, block_length):
 
             sel = slice(ii, ii + block_length)

@@ -31,6 +31,8 @@ def get_pointing_any_scan(time, alt0, az0, time_format='unix', feed_rotation=0,
 
     alt0 = np.array([alt0, ]).flatten()[:, None]
     az0  = np.array([az0,  ]).flatten()[:, None]
+    # convert az range to -180 to 180
+    az0[az0>180.] -= 360.
 
     if not hasattr(feed_rotation, '__iter__'):
         feed_rotation = [feed_rotation, ] * alt0.shape[0]
