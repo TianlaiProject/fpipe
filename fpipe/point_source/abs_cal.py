@@ -58,7 +58,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
             l = ax.plot(xx, yy, '.-', lw=1)
             ax.fill_between(xx, yy-ee, yy+ee, alpha=0.5, color=l[0].get_color())
             yy_fit = np.exp(np.poly1d(fit_params[0][0])(r))
-            ax.plot(xx, yy_fit, color='b', lw=2.5)
+            ax.plot(xx, yy_fit, color='b', lw=2.5, ls='--')
 
 
             yy = vis[~ns, 0, 1]
@@ -66,7 +66,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
             l = ax.plot(xx, yy, '.-', lw=1)
             ax.fill_between(xx, yy-ee, yy+ee, alpha=0.5, color=l[0].get_color())
             yy_fit = np.exp(np.poly1d(fit_params[0][1])(r))
-            ax.plot(xx, yy_fit, color='r', lw=2.5)
+            ax.plot(xx, yy_fit, color='r', lw=2.5, ls='--')
 
 
             ax.set_ylim(ymax=800, ymin=1.e-2)
@@ -90,7 +90,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
 
 
 
-def cal_3C286():
+def cal_3C286(fwhm=None):
 
     a0 =  1.2481
     a1 = -0.4507
@@ -104,7 +104,7 @@ def cal_3C286():
     Jy2mJy = 1.e3
 
     return lambda nu: 10**(a0 + a1 * np.log10(nu) + a2 * np.log10(nu)**2
-                           + a3 * np.log10(nu)**2) * J2K(nu) * Jy2mJy
+                           + a3 * np.log10(nu)**2) * J2K(nu, fwhm=fwhm) * Jy2mJy
 
 
 def iter_beams(data_path, data_name):

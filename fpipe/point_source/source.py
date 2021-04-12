@@ -122,12 +122,13 @@ def get_NED_source(s, freq, beam_off):
             return cal_T, _name, data
     return None, None, None
 
-def mJy2K(freq, eta=1., beam_off=0):
+def mJy2K(freq, eta=1., beam_off=0, fwhm=None):
 
-    data = np.loadtxt('/users/ycli/code/fpipe/fpipe/data/fwhm.dat')
-    f = data[4:, 0] * 1.e-3
-    d = data[4:, 1:]
-    fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")
+    if fwhm is None:
+        data = np.loadtxt('/users/ycli/code/fpipe/fpipe/data/fwhm.dat')
+        f = data[4:, 0] * 1.e-3
+        d = data[4:, 1:]
+        fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")
 
     _lambda = 2.99e8 / (freq * 1.e9)
     #_sigma = 1.02 *  _lambda / 300. / np.pi * 180. * 3600.
