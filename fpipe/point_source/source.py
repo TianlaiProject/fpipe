@@ -17,6 +17,9 @@ from fpipe.map import algebra as al
 from scipy.interpolate import interp1d, interp2d
 from scipy.interpolate import NearestNDInterpolator
 
+import os
+_dir_ = os.path.dirname(__file__)
+
 def get_map_spec(map_name, map_key, ra, dec, beam_size=3./60.):
 
     with h5.File(map_name, 'r') as f:
@@ -124,7 +127,7 @@ def get_NED_source(s, freq, beam_off):
 
 def mJy2K(freq, eta=1., beam_off=0):
 
-    data = np.loadtxt('/users/ycli/code/fpipe/fpipe/data/fwhm.dat')
+    data = np.loadtxt(_dir_ + '/../data/fwhm.dat')
     f = data[4:, 0] * 1.e-3
     d = data[4:, 1:]
     fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")
