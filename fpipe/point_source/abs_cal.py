@@ -77,7 +77,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
             if output is not None:
                 plt.savefig(output+'_F%02d.png'%bi)
 
-            plt.show()
+            #plt.show()
 
 
             #fig = plt.figure(figsize=(10, 3))
