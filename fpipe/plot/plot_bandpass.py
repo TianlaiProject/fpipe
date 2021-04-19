@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import cm
 
-from meerKAT_analysis.timestream import tod_ps
+#from meerKAT_analysis.timestream import tod_ps
 
 def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-3, ymax=9.e-1):
 
@@ -35,8 +35,8 @@ def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-3, ymax=9
         _nd_t = np.ma.mean(nd, axis=1)[:, None, :]
         mask = np.all(_nd_t == 0, axis=(1, 2))
 
-        ps, bc = tod_ps.est_tcorr_psd1d_fft(_nd_t, time, mask,
-                                            n_bins = 15, f_min=1.e-4, f_max=1./16.)
+        ps, bc = est_tcorr_psd1d_fft(_nd_t, time, mask, n_bins = 15, 
+                                     f_min=1.e-4, f_max=1./16.)
 
         ax = axes[bi]
         ax.plot(bc, ps[:, 0, 0], 'ro-')
@@ -53,6 +53,71 @@ def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-3, ymax=9
 
     if output is not None:
         fig.savefig(output, formate='pdf')
+
+def est_tcorr_psd1d_fft(data, ax, flag, n_bins=None, inttime=None,
+        f_min=None, f_max=None):
+
+    data = data.copy()
+
+    mean = np.mean(data[~flag, ...], axis=0)
+    data -= mean[None, :, :]
+    data[flag, ...] = 0.
+
+    weight = np.ones_like(data)
+    weight[flag, ...] = 0
+
+    windowf_t = np.blackman(data.shape[0])[:, None, None]
+    windowf = windowf_t
+
+    #logger.info('apply blackman windowf')
+    data   = data   * windowf.copy()
+    weight = weight * windowf.copy()
+
+    fftdata = np.fft.fft(data, axis=0) # norm='ortho')
+    fftdata /= np.sqrt(np.sum(weight, axis=0))[None, ...]
+
+    n = ax.shape[0]
+    if inttime is None:
+        d = ax[1] - ax[0]
+    else:
+        d = inttime
+    freq = np.fft.fftfreq(n, d) #* 2 * np.pi
+
+    freq_p    = freq[freq>0]
+    fftdata_p = fftdata[freq>0, ...]
+    fftdata_p = np.abs(fftdata_p) * np.sqrt(float(d))
+    fftdata_p = fftdata_p ** 2.
+    fftdata_p = fftdata_p * 2**0.5 # include negative frequency
+
+    if n_bins is not None:
+
+        #if avg:
+        #    fftdata_p = np.mean(fftdata_p, axis=1)[:, None, :]
+
+        fftdata_bins = np.zeros((n_bins, ) + fftdata_p.shape[1:])
+
+        if f_min is None: f_min = freq_p.min()
+        if f_max is None: f_max = freq_p.max()
+        freq_bins_c = np.logspace(np.log10(f_min), np.log10(f_max), n_bins)
+        freq_bins_d = freq_bins_c[1] / freq_bins_c[0]
+        freq_bins_e = freq_bins_c / (freq_bins_d ** 0.5)
+        freq_bins_e = np.append(freq_bins_e, freq_bins_e[-1] * freq_bins_d)
+        norm = np.histogram(freq_p, bins=freq_bins_e)[0] * 1.
+        norm[norm==0] = np.inf
+
+        for i in range(fftdata_p.shape[1]):
+
+            hist_0 = np.histogram(freq_p, bins=freq_bins_e, weights=fftdata_p[:,i,0])[0]
+            hist_1 = np.histogram(freq_p, bins=freq_bins_e, weights=fftdata_p[:,i,1])[0]
+            hist   = np.concatenate([hist_0[:, None], hist_1[:, None]],axis=1)
+            fftdata_bins[:, i, :] = hist / norm[:, None]
+
+        fftdata_bins[freq_bins_c <= freq_p.min()] = 0.
+        fftdata_bins[freq_bins_c >= freq_p.max()] = 0.
+
+        return fftdata_bins, freq_bins_c
+    else:
+        return fftdata_p, freq_p
 
 def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None):
 
@@ -229,67 +294,51 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
     
     _pol = ['XX', 'YY'][pol]
     
-    fig = plt.figure(figsize=[12, 8])
-    gs = gridspec.GridSpec(5, 4, left=0.07, bottom=0.07, top=0.97, right=0.97,
-                           figure=fig, wspace=0.0, hspace=0.0)
-    
+    fig, axes = axes_utils.setup_axes(5, 4)
+
     suffix = ''
     if normalize: suffix += '_norm'
     if ratio: suffix += '_ratio'
-    bandpass_ref = None
+    #bandpass_ref = None
     time_list = []
     
     
-    with h5.File(bandpass_path + bandpass_name + '.h5', 'r') as f:
+    with h5.File(bandpass_path + 'bandpass_' + bandpass_name + '.h5', 'r') as f:
         bandpass_combined = f['bandpass'][:]
         freq     = f['freq'][:]
         time_list = f['time'][:]
+
+    bandpass_ref = np.median(bandpass_combined, axis=0)
+    bandpass_ref = medfilt(bandpass_ref, [1, 201, 1])
+    if normalize:
+        bandpass_ref /= np.ma.median(bandpass_ref, axis=1)[:, None, :]
     
-    #print bandpass_combined.shape
     cnorm = mpl.colors.Normalize(vmin=0, vmax=bandpass_combined.shape[0])
     
-    axes = []
-    for b in range(19):
-        i = b/4
-        j = b - i * 4
-            
-        ax = fig.add_subplot(gs[i, j])
-        axes.append(ax)
-    
-    #for block_id in range(blk_st, blk_ed+1):
     for ii in range(bandpass_combined.shape[0]):
     
-        #bandpass, freq, time = load_bandpass(bandpass_path, 
-        #    bandpass_temp%(bandpass_name, block_id, block_id) + '_%s.h5', tnoise_path)
-        #time_list.append(time)
-        #bandpass = np.ma.array(bandpass, mask=False)
-        #bandpass_smooth = medfilt(bandpass, [1, 201, 1])
-        #bandpass_smooth = np.ma.array(bandpass_smooth, mask=False)
-        #bandpass_smooth = smooth_bandpass(bandpass.copy(), axis=1)
         bandpass_smooth = bandpass_combined[ii].copy()
         
         if normalize:
-            bandpass_smooth /= np.median(bandpass_smooth, axis=1)[:, None, :]
-            #print bandpass_smooth.min(), bandpass_smooth.max()
-        
+            bandpass_smooth /= np.ma.median(bandpass_smooth, axis=1)[:, None, :]
+
         if ratio:
-            if bandpass_ref is None:
-                bandpass_ref = bandpass_smooth.copy()
-            #print bandpass_ref.min(), bandpass_ref.max()
+            #if bandpass_ref is None:
+            #    bandpass_ref = bandpass_smooth.copy()
             bandpass_smooth /= bandpass_ref.copy()
             ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
         else:
             ylabel = r'$g(\nu, t)$'
         
         for b in range(19):
+            i = b / 4
+            j = b % 4
             ax = axes[b]
-            #ax.plot(freq, bandpass[b, :, pol], '-', color='0.5', lw=0.2)
             ax.plot(freq, bandpass_smooth[b, :, pol], c=cm.jet(cnorm(ii)), 
                     lw=0.8)
-
             ax.set_ylim(ymin, ymax)
             ax.set_xlim(freq.min(), freq.max())
-            
+
             if ii == 0:
                 ax.text(0.70, 0.9, 'Feed%02d %s'%(b, _pol), transform=ax.transAxes)
             
@@ -304,12 +353,15 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
                 ax.set_ylabel(ylabel)
 
     if not ratio:
-        bandpass_combined = np.median(bandpass_combined, axis=0)
-        bandpass_combined = medfilt(bandpass_combined, [1, 201, 1])
-        if normalize:
-            bandpass_combined /= np.median(bandpass_combined, axis=1)[:, None, :]
+        #bandpass_combined = np.median(bandpass_combined, axis=0)
+        #bandpass_combined = medfilt(bandpass_combined, [1, 201, 1])
+        #if normalize:
+        #    bandpass_combined /= np.median(bandpass_combined, axis=1)[:, None, :]
         for b in range(19):
-            axes[b].plot(freq, bandpass_combined[b, :, pol], c='k', lw=0.5)
+            axes[b].plot(freq, bandpass_ref[b, :, pol], c='k', lw=0.5)
+    else:
+        for b in range(19):
+            axes[b].axhline(1, 0, 1, c='k', lw=1.0, ls='--')
 
     #print time_list
     time_list -= time_list[0]
@@ -321,7 +373,8 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
     sm._A = []
     
     #ax = fig.add_subplot(gs[-1, -1])
-    cax = fig.add_axes([0.76, 0.18, 0.20, 0.01])
+    #cax = fig.add_axes([0.76, 0.18, 0.20, 0.01])
+    cax = axes[-1]
     fig.colorbar(sm, cax=cax, orientation='horizontal')
     cax.set_xlabel('Time [hr]')
     if output_path is not None:
