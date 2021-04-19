@@ -120,7 +120,7 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
     print 'output image'
 
     if output is not None:
-        fig.savefig(output, formate='png')
+        fig.savefig(output, formate='png', dpi=300)
 
     fig.clf()
 

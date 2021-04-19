@@ -20,7 +20,7 @@ from matplotlib import cm
 
 from meerKAT_analysis.timestream import tod_ps
 
-def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-3, ymax=9.e-1):
+def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-4, ymax=9.e-1):
 
     fig, axes = axes_utils.setup_axes(5, 4, colorbar=False, title=title)
 
@@ -29,20 +29,25 @@ def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-3, ymax=9
         jj = bi % 4
 
         nd, time, freq = bandpass_cal.est_gtgnu_onefeed(file_list,
-                            smooth=(1, 1), gi=bi, Tnoise_file=Tnoise_file)
+                            smooth=(1, 1), gi=bi, Tnoise_file=Tnoise_file,
+                            interp_mask=False)
 
         nd = np.ma.masked_invalid(nd)
         _nd_t = np.ma.mean(nd, axis=1)[:, None, :]
         mask = np.all(_nd_t == 0, axis=(1, 2))
 
+        dtime = time[1] - time[0]
+        f_max = 1./ dtime / 2.
+        f_min = 1./ dtime / float(time.shape[0])
         ps, bc = tod_ps.est_tcorr_psd1d_fft(_nd_t, time, mask,
-                                            n_bins = 15, f_min=1.e-4, f_max=1./16.)
+                                            n_bins = 15, f_min=f_min, f_max=f_max)
 
         ax = axes[bi]
         ax.plot(bc, ps[:, 0, 0], 'ro-')
         ax.plot(bc, ps[:, 0, 1], 'bo-')
         ax.loglog()
-        ax.set_xlim(1.9e-4, 1.2/16.)
+        #ax.set_xlim(1.9e-4, 1.2/16.)
+        ax.set_xlim(f_min, f_max)
         ax.set_ylim(ymin, ymax)
         ax.text(0.75, 0.8, 'Feed%02d'%bi, transform=ax.transAxes)
         if ii == 4: ax.set_xlabel(r'f [Hz]')
@@ -171,8 +176,11 @@ def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None):
     
     with h5.File(file_name, 'r') as f:
         gtgnu = f['gtgnu'][:]
+        mask  = f['mask'][:]
         time  = f['time'][:]
         freq  = f['freq'][:]
+
+    gtgnu = np.ma.array(gtgnu, mask = mask)
         
     time -= time[0]
     time /= 3600.

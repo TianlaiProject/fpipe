@@ -600,7 +600,8 @@ def ND_statics(file_list, gi=0, on_t=1):
 
     return vis, time[on], freq
 
-def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
+def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None,
+        interp_mask = True):
 
     nd = []
     nd_mask = []
@@ -624,51 +625,65 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
     _m = np.ma.mean(nd)
     _s = np.ma.std(nd)
 
-    nd.mask += np.abs(nd - _m) - 2 * _s > 0
+    #nd.mask += np.abs(nd - _m) - 2 * _s > 0
 
     bad_freq = np.sum(nd.mask, axis=(0, 2))
     bad_freq = bad_freq > 0.7 * freq.shape[0]
     nd.mask[:, bad_freq, :] = True
 
-    shp = nd.shape[:2]
-    grid_x, grid_y = np.mgrid[0:shp[0], 0:shp[1]]
-    xi = [grid_x.flatten()[:, None], grid_y.flatten()[:, None]]
-    xi = np.concatenate(xi, axis=1)
+    if interp_mask:
 
-    # xx
-    msk = nd.mask[:, :, 0].flatten()
-    values = nd[:, :, 0].flatten()[~msk]
-    points = xi[~msk, :]
-    nd_xx = griddata(points, values, xi, method='nearest')
-    nd_xx.shape = shp
-    nd_xx = median_filter(nd_xx, smooth)
+        shp = nd.shape[:2]
+        grid_x, grid_y = np.mgrid[0:shp[0], 0:shp[1]]
+        xi = [grid_x.flatten()[:, None], grid_y.flatten()[:, None]]
+        xi = np.concatenate(xi, axis=1)
 
-    # yy
-    msk = nd.mask[:, :, 1].flatten()
-    values = nd[:, :, 1].flatten()[~msk]
-    points = xi[~msk, :]
-    nd_yy = griddata(points, values, xi, method='nearest')
-    nd_yy.shape = shp
-    nd_yy = median_filter(nd_yy, smooth)
+        # xx
+        msk = nd.mask[:, :, 0].flatten()
+        values = nd[:, :, 0].flatten()[~msk]
+        points = xi[~msk, :]
+        if len(points) == 0:
+            print 'all mask'
+            nd_xx = np.ones(shp)
+        else:
+            nd_xx = griddata(points, values, xi, method='nearest')
+            nd_xx.shape = shp
+            nd_xx = median_filter(nd_xx, smooth)
 
-    nd =  np.concatenate([nd_xx[:, :, None], nd_yy[:, :, None]], axis=-1)
-    return nd, time,freq
+        # yy
+        msk = nd.mask[:, :, 1].flatten()
+        values = nd[:, :, 1].flatten()[~msk]
+        points = xi[~msk, :]
+        if len(points) == 0:
+            print 'all mask'
+            nd_yy = np.ones(shp)
+        else:
+            nd_yy = griddata(points, values, xi, method='nearest')
+            nd_yy.shape = shp
+            nd_yy = median_filter(nd_yy, smooth)
 
-def output_gtgnu(file_list, output_name, smooth=(7, 51), Tnoise_file=''):
+        nd =  np.concatenate([nd_xx[:, :, None], nd_yy[:, :, None]], axis=-1)
+
+    return nd, time, freq
+
+def output_gtgnu(file_list, output_name, smooth=(7, 51), Tnoise_file='', 
+        interp_mask=True):
 
     nd_list = []
     for gi in range(19):
         print "Feed %02d"%gi
         nd, time, freq = est_gtgnu_onefeed(file_list, smooth=smooth, gi=gi,
-                                           Tnoise_file = Tnoise_file)
+                                           Tnoise_file = Tnoise_file,
+                                           interp_mask = interp_mask)
         nd_list.append(nd[..., None])
 
-    nd = np.concatenate(nd_list, axis=-1)
+    nd = np.ma.concatenate(nd_list, axis=-1)
 
     print nd.shape
 
     with h5.File(output_name, 'w') as f:
         f['gtgnu'] = nd
+        f['mask']  = nd.mask
         f['freq']  = freq
         f['time']  = time
 
