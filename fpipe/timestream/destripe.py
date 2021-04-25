@@ -112,6 +112,7 @@ def Ctt(fk, alpha, time):
     tt = time - time[0]
 
     c = ct(tt)
+    #c[0] += 1
 
     C_tt = np.zeros(c.shape * 2)
 
@@ -121,6 +122,38 @@ def Ctt(fk, alpha, time):
     C_tt = np.triu(C_tt, 0) + np.triu(C_tt, 1).T
 
     return C_tt
+
+def evaluate_cov_with_fn_realization(alpha, fk, time, N=1000):
+
+    ntime = time.shape[0]
+    dtime = time[1] - time[0]
+
+    gamma = -alpha
+    P = lambda f: (f/fk)**gamma
+
+    f_axis = np.fft.fftfreq( ntime, d=dtime)
+    f_abs = np.abs(f_axis)
+    f_abs[f_abs==0] = np.inf
+
+    f0 = fk
+
+    fn_psd = P(f_abs)
+
+    fn_psd[0] = 0.
+    shp = (N, ) + fn_psd.shape
+
+    fn_psd /= 2.0
+    fn_psd = np.sqrt(fn_psd / dtime) #  * ntime * _n * nfreq)
+
+    fn_k = np.random.standard_normal(shp) + 1.J * np.random.standard_normal(shp)
+    fn_k *= fn_psd[None, :]
+
+    fn_r = np.fft.irfft(fn_k, axis=1, norm='ortho')
+
+    fsel = slice(ntime)
+    fn_r = fn_r[:, fsel]
+
+    return  np.cov(fn_r, rowvar=False)
 
 
 def destriping(l, vis, var, time, fk, alpha):
@@ -143,7 +176,8 @@ def destriping(l, vis, var, time, fk, alpha):
     Zy = y
 
     if fk is not None:
-        C_tt = Ctt(fk, alpha, time) * var
+        #C_tt = Ctt(fk, alpha, time) * var
+        C_tt = evaluate_cov_with_fn_realization(alpha, fk, time) * var
         C_tt = np.mat(C_tt)
         Ca = ((F.T * F).I)**2 * F.T * C_tt * F
         #Ca = F.T * C_tt * F

@@ -1,5 +1,6 @@
 import numpy as np
 import h5py as h5
+from scipy.interpolate import interp1d
 
 from fpipe.timestream import bandpass_cal
 import matplotlib.pyplot as plt
@@ -58,7 +59,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
             l = ax.plot(xx, yy, '.-', lw=1)
             ax.fill_between(xx, yy-ee, yy+ee, alpha=0.5, color=l[0].get_color())
             yy_fit = np.exp(np.poly1d(fit_params[0][0])(r))
-            ax.plot(xx, yy_fit, color='b', lw=2.5)
+            ax.plot(xx, yy_fit, color='b', lw=2.5, ls='--')
 
 
             yy = vis[~ns, 0, 1]
@@ -66,7 +67,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
             l = ax.plot(xx, yy, '.-', lw=1)
             ax.fill_between(xx, yy-ee, yy+ee, alpha=0.5, color=l[0].get_color())
             yy_fit = np.exp(np.poly1d(fit_params[0][1])(r))
-            ax.plot(xx, yy_fit, color='r', lw=2.5)
+            ax.plot(xx, yy_fit, color='r', lw=2.5, ls='--')
 
 
             ax.set_ylim(ymax=800, ymin=1.e-2)
@@ -90,7 +91,7 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
 
 
 
-def cal_3C286():
+def cal_3C286(fwhm=None):
 
     a0 =  1.2481
     a1 = -0.4507
@@ -104,7 +105,7 @@ def cal_3C286():
     Jy2mJy = 1.e3
 
     return lambda nu: 10**(a0 + a1 * np.log10(nu) + a2 * np.log10(nu)**2
-                           + a3 * np.log10(nu)**2) * J2K(nu) * Jy2mJy
+                           + a3 * np.log10(nu)**2) * J2K(nu, fwhm=fwhm) * Jy2mJy
 
 
 def iter_beams(data_path, data_name):
@@ -212,3 +213,112 @@ def flag_freq(vis):
 
     print new_mask
     return mask
+
+def load_fitting_params(path):
+
+    with h5.File(path, 'r') as f:
+        Tnd = f['Tnd'][:]
+        freq = f['freq'][:]
+        freq_mask = f['freq_mask'][:]
+        fit_params = f['fit_params'][:]
+
+    Tnd = np.ma.array(Tnd, mask=False)
+    Tnd.mask += freq_mask[:, None]
+
+    a = fit_params[:, :, 2]
+    b = fit_params[:, :, 1]
+    c = fit_params[:, :, 0]
+
+    sigma2 = -1./c/2.
+    mu = - b/c/2.
+    A = np.exp(a - b**2/4./c)
+
+    fwhm = (sigma2**0.5) * 2. * ( 2. * np.log(2.) ) **0.5
+    fwhm = fwhm * 60.
+
+    #fwhm_xx = interp1d(freq * 1.e-3, fwhm[:, 0], fill_value="extrapolate", axis=0)
+    #fwhm_yy = interp1d(freq * 1.e-3, fwhm[:, 1], fill_value="extrapolate", axis=0)
+
+    fwhm_xx = None
+    fwhm_yy = None
+
+    cal_T_xx = cal_3C286(fwhm_xx)(freq * 1.e-3)
+    cal_T_yy = cal_3C286(fwhm_yy)(freq * 1.e-3)
+
+    A[:, 0] = cal_T_xx / A[:, 0]
+    A[:, 1] = cal_T_yy / A[:, 1]
+
+    A = np.ma.array(A, mask=Tnd.mask)
+    mu = np.ma.array(mu, mask=Tnd.mask) * 60.
+    sigma2 = np.ma.array(sigma2, mask=Tnd.mask)
+
+    return A, mu, fwhm, sigma2, freq
+
+def iter_beam_list(result_path, key_list, beam_list,
+                   band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz']):
+
+    for kk, key in enumerate(key_list):
+        for beam in beam_list[kk]:
+            result_name = []
+            for suffix in band_list:
+                result_name.append(result_path + '%s%s_F%02d.h5'%(key, suffix, beam))
+
+            yield beam, result_name
+
+
+def average_eta(result_path, key_list_dict, beam_list,
+                band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
+                tnoise_model=None):
+
+    with h5.File(tnoise_model, 'r') as f:
+        tnoise_md = f['Tnoise'][:]
+        tnoise_md_freq = f['freq'][:]
+
+    r = []
+    f = None
+    for date in key_list_dict.keys():
+        key_list = key_list_dict[date]
+
+        #beam_list = []
+        eta_list = []
+
+        for beam, path_list in iter_beam_list(result_path + '/%s/'%date, key_list,
+                                              beam_list, band_list):
+
+            _eta = []
+            _f = []
+            for path in path_list:
+                A, mu, fwhm, sigma2, freq = load_fitting_params(path)
+                eta = interp1d(tnoise_md_freq, tnoise_md[..., beam-1], axis=0)(freq) / A
+                _eta.append(eta)
+                _f.append(freq)
+                #print eta.shape
+            _eta = np.ma.concatenate(_eta, axis=0)
+            _f = np.concatenate(_f)
+            if f is None: f = _f
+
+            eta_list.append(_eta[None, ...])
+
+        eta_list = np.ma.concatenate(eta_list, axis=0)
+        argsort = np.argsort(sum(beam_list, []))
+        eta_list = eta_list[argsort]
+        r.append(eta_list[None, ...])
+
+    r = np.ma.concatenate(r, axis=0)
+    return r, f
+
+def iter_avg_eta(result_path, key_list_dict, beam_list,
+                band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
+                tnoise_model=None, pol=0):
+
+    eta, f = average_eta(result_path, key_list_dict, beam_list, band_list, tnoise_model)
+    eta_avg = np.ma.median(eta, axis=0)
+    for bi in range(19):
+        xx = np.linspace(0, 1, f.shape[0]) #freq[~eta.mask]
+        msk = eta_avg[bi, :, pol].mask
+        yy = eta_avg[bi, :, pol][~msk]
+        eta_poly = np.poly1d(np.polyfit(xx[~msk], yy, 15))
+        #yy = np.ma.array(eta_poly(freq), mask=eta.mask)
+        yy = np.ma.array(eta_poly(xx), mask=False)
+        yield bi, f, yy
+

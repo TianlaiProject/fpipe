@@ -18,125 +18,89 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import cm
 
-#from meerKAT_analysis.timestream import tod_ps
+from scipy.optimize import least_squares, curve_fit
 
-def gt_ps(file_list, Tnoise_file=None, title='', output=None, ymin=2.e-3, ymax=9.e-1):
+import pandas as pd
+from IPython.display import HTML
 
-    fig, axes = axes_utils.setup_axes(5, 4, colorbar=False, title=title)
+def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, ymax=5.e0):
+
+    with h5.File(gt_ps_file, 'r') as f:
+        ps_result  = f['ps_result'][:]
+        er_result  = f['er_result'][:]
+        bc         = f['f_result'][:]
+        paras_list = f['paras'][:]
+        ps_fit     = f['ps_fit'][:]
+        f_fit      = f['f_fit'][:]
+
+    f_min = bc.min()
+    f_max = bc.max()
+    fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, title=title)
 
     for bi in range(19):
-        ii = bi / 4
-        jj = bi % 4
-
-        nd, time, freq = bandpass_cal.est_gtgnu_onefeed(file_list,
-                            smooth=(1, 1), gi=bi, Tnoise_file=Tnoise_file)
-
-        nd = np.ma.masked_invalid(nd)
-        _nd_t = np.ma.mean(nd, axis=1)[:, None, :]
-        mask = np.all(_nd_t == 0, axis=(1, 2))
-
-        ps, bc = est_tcorr_psd1d_fft(_nd_t, time, mask, n_bins = 15, 
-                                     f_min=1.e-4, f_max=1./16.)
+        ii = bi / 5
+        jj = bi % 5
 
         ax = axes[bi]
-        ax.plot(bc, ps[:, 0, 0], 'ro-')
-        ax.plot(bc, ps[:, 0, 1], 'bo-')
+
+        ps_mean = ps_result[bi]
+        ps_err  = er_result[bi]
+        g = ps_mean[:, 0] > 0
+        ax.errorbar(bc[g], ps_mean[g, 0], ps_err[g, 0], fmt='ro--')
+        ax.errorbar(bc[g], ps_mean[g, 1], ps_err[g, 1], fmt='bo--')
+
+        ax.plot(f_fit, ps_fit[bi, 0], 'r-')
+        ax.plot(f_fit, ps_fit[bi, 1], 'b-')
+
         ax.loglog()
-        ax.set_xlim(1.9e-4, 1.2/16.)
+        ax.set_xlim(f_min, f_max)
         ax.set_ylim(ymin, ymax)
-        ax.text(0.75, 0.8, 'Feed%02d'%bi, transform=ax.transAxes)
-        if ii == 4: ax.set_xlabel(r'f [Hz]')
+        ax.text(0.75, 0.8, 'Feed%02d'%(bi+1), transform=ax.transAxes)
+        if ii == 3: ax.set_xlabel(r'$f\, {\rm [Hz]}$')
         else: ax.set_xticklabels([])
 
-        if jj == 0: ax.set_ylabel(r'P(f)')
+        if jj == 0: ax.set_ylabel(r'$P(f)\,{\rm K}^2{\rm s}^{-1}$')
         else: ax.set_yticklabels([])
 
     if output is not None:
-        fig.savefig(output, formate='pdf')
+        fig.savefig(output, formate='png')
+        plt.show()
+        plt.clf()
 
-def est_tcorr_psd1d_fft(data, ax, flag, n_bins=None, inttime=None,
-        f_min=None, f_max=None):
+    _result = [("F%02d"%(ii+1), ) + tuple(x.flatten()) for ii, x in enumerate(paras_list)]
+    _result = np.array(_result, dtype = [('Feed', 'S3'),
+        ('A XX', 'f4'), ('fk XX', 'f4'), ('alpha XX', 'f4'),
+        ('A YY', 'f4'), ('fk YY', 'f4'), ('alpha YY', 'f4')])
+    _result = HTML(pd.DataFrame(_result).to_html(index=False))
 
-    data = data.copy()
+    return _result
+    #return np.array(paras_list), bc, ps_result, er_result
 
-    mean = np.mean(data[~flag, ...], axis=0)
-    data -= mean[None, :, :]
-    data[flag, ...] = 0.
-
-    weight = np.ones_like(data)
-    weight[flag, ...] = 0
-
-    windowf_t = np.blackman(data.shape[0])[:, None, None]
-    windowf = windowf_t
-
-    #logger.info('apply blackman windowf')
-    data   = data   * windowf.copy()
-    weight = weight * windowf.copy()
-
-    fftdata = np.fft.fft(data, axis=0) # norm='ortho')
-    fftdata /= np.sqrt(np.sum(weight, axis=0))[None, ...]
-
-    n = ax.shape[0]
-    if inttime is None:
-        d = ax[1] - ax[0]
-    else:
-        d = inttime
-    freq = np.fft.fftfreq(n, d) #* 2 * np.pi
-
-    freq_p    = freq[freq>0]
-    fftdata_p = fftdata[freq>0, ...]
-    fftdata_p = np.abs(fftdata_p) * np.sqrt(float(d))
-    fftdata_p = fftdata_p ** 2.
-    fftdata_p = fftdata_p * 2**0.5 # include negative frequency
-
-    if n_bins is not None:
-
-        #if avg:
-        #    fftdata_p = np.mean(fftdata_p, axis=1)[:, None, :]
-
-        fftdata_bins = np.zeros((n_bins, ) + fftdata_p.shape[1:])
-
-        if f_min is None: f_min = freq_p.min()
-        if f_max is None: f_max = freq_p.max()
-        freq_bins_c = np.logspace(np.log10(f_min), np.log10(f_max), n_bins)
-        freq_bins_d = freq_bins_c[1] / freq_bins_c[0]
-        freq_bins_e = freq_bins_c / (freq_bins_d ** 0.5)
-        freq_bins_e = np.append(freq_bins_e, freq_bins_e[-1] * freq_bins_d)
-        norm = np.histogram(freq_p, bins=freq_bins_e)[0] * 1.
-        norm[norm==0] = np.inf
-
-        for i in range(fftdata_p.shape[1]):
-
-            hist_0 = np.histogram(freq_p, bins=freq_bins_e, weights=fftdata_p[:,i,0])[0]
-            hist_1 = np.histogram(freq_p, bins=freq_bins_e, weights=fftdata_p[:,i,1])[0]
-            hist   = np.concatenate([hist_0[:, None], hist_1[:, None]],axis=1)
-            fftdata_bins[:, i, :] = hist / norm[:, None]
-
-        fftdata_bins[freq_bins_c <= freq_p.min()] = 0.
-        fftdata_bins[freq_bins_c >= freq_p.max()] = 0.
-
-        return fftdata_bins, freq_bins_c
-    else:
-        return fftdata_p, freq_p
-
-def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None):
+def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None, 
+        do_destripe=False, gtps_file=None):
 
     #fk = 0.01
     #alpha = 1.5
+
+    if gtps_file is not None:
+        with h5.File(gtps_file, 'r') as f:
+            ps_para = f['paras'][:]
 
     with h5.File(file_name, 'r') as f:
         nd    = f['gtgnu'][:]
         time  = f['time'][:]
         freq  = f['freq'][:]
+        mask  = f['mask'][:]
 
+    nd = np.ma.array(nd, mask=mask)
     nd = np.ma.masked_invalid(nd)
 
     #nd[:, 200:600, ...] = 0
-    nd.mask[:, 200:600, ...] = True
+    #nd.mask[:, 200:600, ...] = True
 
     _nd_t = np.ma.mean(nd, axis=1, )
     good = (np.abs(_nd_t - np.ma.mean(_nd_t, axis=0)[None, :,:]) \
-            - 3.*np.ma.std(_nd_t, axis=0)[None, :, :])<0
+            - 6.*np.ma.std(_nd_t, axis=0)[None, :, :])<0
     #nd.mask += ~good[:, None, :, :]
 
     #time -= time[0]
@@ -152,35 +116,48 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None):
 
         ax = axes[bi]
         gt = np.ma.median(nd[:, :, :, bi], axis=1)
-        #var = np.ma.var(nd[:, :, :, bi], axis=1)
-        var = np.ma.median(nd[:, :, :, bi], axis=1)
+        var = np.ma.var(nd[:, :, :, bi], axis=1)
+        #var = np.ma.median(nd[:, :, :, bi], axis=1)
         #var[var==0] = np.inf
 
         ax.plot(xx, gt[:, 0], 'r-', lw=0.1)
         ax.plot(xx, gt[:, 1], 'b-', lw=0.1)
 
-        gt_m = np.ma.mean(gt, axis=0)
-        gt -= gt_m[None, :]
+        if do_destripe:
+            gt_m = np.ma.median(gt, axis=0)
+            gt -= gt_m[None, :]
 
-        gt[:, 0] = destripe.destriping(l,
-                                       gt[good[:, 0, bi], 0],
-                                       var[good[:, 0, bi], 0],
-                                       time[good[:, 0, bi]],
-                                       fk, alpha)(time)
-        gt[:, 1] = destripe.destriping(l,
-                                       gt[good[:, 0, bi], 1],
-                                       var[good[:, 0, bi], 1],
-                                       time[good[:, 0, bi]],
-                                       fk, alpha)(time)
-        #gt = median_filter(gt, [11, 1])
+            if gtps_file is not None:
+                #fk = min(ps_para[bi, 0, 1], 2.e-3)
+                #alpha = min(ps_para[bi, 0, 2], 1.9)
+                fk    = ps_para[bi, 0, 1]
+                alpha = ps_para[bi, 0, 2]
+                #print '%02d: XX [%e, %e]  '%(bi+1, fk, alpha),
+            gt[:, 0] = destripe.destriping(l,
+                                           gt[good[:, 0, bi], 0],
+                                           var[good[:, 0, bi], 0],
+                                           time[good[:, 0, bi]],
+                                           fk, alpha)(time)
+            if gtps_file is not None:
+                #fk = min(ps_para[bi, 1, 1], 2.e-3)
+                #alpha = min(ps_para[bi, 1, 2], 1.9)
+                fk    = ps_para[bi, 1, 1]
+                alpha = ps_para[bi, 1, 2]
+                #print 'YY [%e, %e]  '%(fk, alpha)
+            gt[:, 1] = destripe.destriping(l,
+                                           gt[good[:, 0, bi], 1],
+                                           var[good[:, 0, bi], 1],
+                                           time[good[:, 0, bi]],
+                                           fk, alpha)(time)
+            #gt = median_filter(gt, [11, 1])
 
-        gt += gt_m[None, :]
+            gt += gt_m[None, :]
 
-        ax.plot(xx, gt[:, 0], 'r-', lw=1)
-        ax.plot(xx, gt[:, 1], 'b-', lw=1)
+            ax.plot(xx, gt[:, 0], 'r-', lw=1)
+            ax.plot(xx, gt[:, 1], 'b-', lw=1)
 
         #ax.legend(title='Feed %02d'%(bi+1), loc=2)
-        ax.text(0.04, 0.8, 'Feed %02d'%bi, transform=ax.transAxes,
+        ax.text(0.04, 0.8, 'Feed %02d'%(bi+1), transform=ax.transAxes,
                 bbox=dict(facecolor='w', alpha=0.5, ec='none'))
         ax.set_ylim(0.81, 1.19)
         ax.set_xlim(xx[1], xx[-1])
@@ -195,7 +172,9 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None):
             ax.set_ylabel(r'$g(t)$')
 
     if output is not None:
-        fig.savefig(output, formate='pdf')
+        fig.savefig(output, formate='png')
+        plt.show()
+        plt.clf()
 
 def plot_baseline(baseline_file):
     
@@ -232,17 +211,23 @@ def plot_baseline(baseline_file):
         else:
             ax.set_ylabel(r'$T$ K')
 
-def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None):
+def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None, ymin=None, ymax=None):
     
     with h5.File(file_name, 'r') as f:
         gtgnu = f['gtgnu'][:]
+        mask  = f['mask'][:]
         time  = f['time'][:]
         freq  = f['freq'][:]
+
+    gtgnu = np.ma.array(gtgnu, mask = mask)
         
     time -= time[0]
     time /= 3600.
 
     freq /= 1.e3
+
+    if ymin is None: ymin=freq.min()
+    if ymax is None: ymax=freq.max()
 
     fig, axes = axes_utils.setup_axes(5, 4)
     for bi in range(gtgnu.shape[3]):
@@ -258,16 +243,16 @@ def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None):
             vmax = 1.05
         else:
             _g = gtgnu[:, :, pol, bi].T
-            vmin = 0.7
-            vmax = 1.3
+            vmin = 0.9
+            vmax = 1.1
         
         im = ax.pcolormesh(time, freq, _g, vmin=vmin, vmax=vmax)
         
-        ax.set_ylim(freq.min(), freq.max())
+        ax.set_ylim(ymin, ymax)
         #ax.set_xlim(time.min(), time.max())
         ax.set_xlim(time.min(), time.max())
         
-        ax.text(0.04, 0.8, 'Feed %02d'%bi, transform=ax.transAxes,
+        ax.text(0.04, 0.8, 'Feed %02d'%(bi+1), transform=ax.transAxes,
                 bbox=dict(facecolor='w', alpha=0.5, ec='none'))
         #ax.semilogy()
         if i != 4:
@@ -287,6 +272,8 @@ def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None):
 
     if output is not None:
         fig.savefig(output, formate='png')
+        plt.show()
+        plt.clf()
 
 def plot_bandpass(bandpass_path, bandpass_name, pol=0,
                   ymin=None, ymax=None, normalize=True, ratio=True, output_path=None):

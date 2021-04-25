@@ -120,8 +120,63 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
     print 'output image'
 
     if output is not None:
-        fig.savefig(output, formate='png')
+        fig.savefig(output, formate='png', dpi=300)
 
+    fig.clf()
+
+def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None):
+
+    fig = plt.figure(figsize=(12, 4))
+    ax  = fig.add_axes([0.07, 0.15, 0.85, 0.80])
+    cax = fig.add_axes([0.925, 0.15, 0.018, 0.80])
+
+    xlabel = None
+    xmin =  1.e10
+    xmax = -1.e10
+    ymin =  1.e10
+    ymax = -1.e10
+    for tblock in file_list:
+        for fblock in tblock:
+            ts = FAST_Timestream(fblock)
+            ts.load_all()
+
+            vis = ts['vis'][:, :, pi, bi].local_array
+            vis_mask = ts['vis_mask'][:, :, pi, bi].local_array
+            on = ts['ns_on'][:, bi].local_array
+            on = on.astype('bool')
+
+            vis = np.ma.array(vis, mask=vis_mask)
+            vis.mask += on[:, None]
+
+            time = ts['sec1970'][:].local_array
+            freq = ts['freq'][:] * 1.e-3
+
+            x_axis = [ datetime.utcfromtimestamp(s) for s in time]
+            if xlabel is None:
+                x_label = 'UTC %s' % x_axis[0].date()
+            x_axis = mdates.date2num(x_axis)
+
+            im = ax.pcolormesh(x_axis, freq, vis.T, vmin=vmin, vmax=vmax)
+            if x_axis.min() < xmin: xmin=x_axis.min()
+            if x_axis.max() > xmax: xmax=x_axis.max()
+            if freq.min() < ymin: ymin=freq.min()
+            if freq.max() > ymax: ymax=freq.max()
+
+            del vis, ts
+            gc.collect()
+
+    date_format = mdates.DateFormatter('%H:%M')
+    ax.xaxis.set_major_formatter(date_format)
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel('Frequency [GHz]')
+    fig.autofmt_xdate()
+    fig.colorbar(im, ax=ax, cax=cax)
+    cax.set_ylabel('T[K]')
+
+    if output is not None:
+        fig.savefig(output, dpi=200)
     fig.clf()
 
 class PlotMeerKAT(timestream_task.TimestreamTask):

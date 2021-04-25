@@ -251,10 +251,10 @@ def ND_statics(file_list, gi=0, on_t=1):
     ts = FAST_Timestream(file_list)
     ts.load_all()
 
-    vis = ts['vis'][..., gi]#.local_array
-    vis_mask = ts['vis_mask'][..., gi]#.local_array
+    vis = ts['vis'][..., gi].local_array
+    vis_mask = ts['vis_mask'][..., gi].local_array
 
-    on = ts['ns_on'][:, gi]#.local_array
+    on = ts['ns_on'][:, gi].local_array
     on = on.astype('bool')
 
     vis = np.ma.array(vis, mask=vis_mask)
@@ -270,7 +270,8 @@ def ND_statics(file_list, gi=0, on_t=1):
 
     return vis, time[on], freq
 
-def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
+def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None,
+        interp_mask = True):
 
     nd = []
     nd_mask = []
@@ -287,58 +288,73 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None):
     nd.mask = np.ma.concatenate(nd_mask, axis=1)
     freq = np.concatenate(freq)
 
-    Tnoise_xx, Tnoise_yy = get_ndmodel(Tnoise_file, freq, gi)
-    nd[:, :, 0] /= Tnoise_xx[None, :]
-    nd[:, :, 1] /= Tnoise_yy[None, :]
+    if Tnoise_file is not None:
+        Tnoise_xx, Tnoise_yy = get_ndmodel(Tnoise_file, freq, gi)
+        nd[:, :, 0] /= Tnoise_xx[None, :]
+        nd[:, :, 1] /= Tnoise_yy[None, :]
 
     _m = np.ma.mean(nd)
     _s = np.ma.std(nd)
 
-    nd.mask += np.abs(nd - _m) - 2 * _s > 0
+    #nd.mask += np.abs(nd - _m) - 2 * _s > 0
 
     bad_freq = np.sum(nd.mask, axis=(0, 2))
     bad_freq = bad_freq > 0.7 * freq.shape[0]
     nd.mask[:, bad_freq, :] = True
 
-    shp = nd.shape[:2]
-    grid_x, grid_y = np.mgrid[0:shp[0], 0:shp[1]]
-    xi = [grid_x.flatten()[:, None], grid_y.flatten()[:, None]]
-    xi = np.concatenate(xi, axis=1)
+    if interp_mask:
 
-    # xx
-    msk = nd.mask[:, :, 0].flatten()
-    values = nd[:, :, 0].flatten()[~msk]
-    points = xi[~msk, :]
-    nd_xx = griddata(points, values, xi, method='nearest')
-    nd_xx.shape = shp
-    nd_xx = median_filter(nd_xx, smooth)
+        shp = nd.shape[:2]
+        grid_x, grid_y = np.mgrid[0:shp[0], 0:shp[1]]
+        xi = [grid_x.flatten()[:, None], grid_y.flatten()[:, None]]
+        xi = np.concatenate(xi, axis=1)
 
-    # yy
-    msk = nd.mask[:, :, 1].flatten()
-    values = nd[:, :, 1].flatten()[~msk]
-    points = xi[~msk, :]
-    nd_yy = griddata(points, values, xi, method='nearest')
-    nd_yy.shape = shp
-    nd_yy = median_filter(nd_yy, smooth)
+        # xx
+        msk = nd.mask[:, :, 0].flatten()
+        values = nd[:, :, 0].flatten()[~msk]
+        points = xi[~msk, :]
+        if len(points) == 0:
+            print 'all mask'
+            nd_xx = np.ones(shp)
+        else:
+            nd_xx = griddata(points, values, xi, method='nearest')
+            nd_xx.shape = shp
+            nd_xx = median_filter(nd_xx, smooth)
 
-    nd =  np.concatenate([nd_xx[:, :, None], nd_yy[:, :, None]], axis=-1)
-    return nd, time,freq
+        # yy
+        msk = nd.mask[:, :, 1].flatten()
+        values = nd[:, :, 1].flatten()[~msk]
+        points = xi[~msk, :]
+        if len(points) == 0:
+            print 'all mask'
+            nd_yy = np.ones(shp)
+        else:
+            nd_yy = griddata(points, values, xi, method='nearest')
+            nd_yy.shape = shp
+            nd_yy = median_filter(nd_yy, smooth)
 
-def output_gtgnu(file_list, output_name, smooth=(7, 51), Tnoise_file=''):
+        nd =  np.concatenate([nd_xx[:, :, None], nd_yy[:, :, None]], axis=-1)
+
+    return nd, time, freq
+
+def output_gtgnu(file_list, output_name, smooth=(7, 51), Tnoise_file='', 
+        interp_mask=True):
 
     nd_list = []
     for gi in range(19):
-        print "Feed %02d"%gi
+        #print "Feed %02d"%gi
         nd, time, freq = est_gtgnu_onefeed(file_list, smooth=smooth, gi=gi,
-                                           Tnoise_file = Tnoise_file)
+                                           Tnoise_file = Tnoise_file,
+                                           interp_mask = interp_mask)
         nd_list.append(nd[..., None])
 
-    nd = np.concatenate(nd_list, axis=-1)
+    nd = np.ma.concatenate(nd_list, axis=-1)
 
-    print nd.shape
+    #print nd.shape
 
     with h5.File(output_name, 'w') as f:
         f['gtgnu'] = nd
+        f['mask']  = nd.mask
         f['freq']  = freq
         f['time']  = time
 
@@ -360,13 +376,13 @@ def get_Ncal(vis, vis_mask, on, on_t, off_t=1, cut_end=True):
     elif on_t == 1:
         off = np.zeros_like(on, dtype='bool')
         for i in range(off_t):
-            off += np.roll(on, i+2) + np.roll(on, -i-2)
+            off += np.roll(on, i+1) + np.roll(on, -i-1)
         vis1_on  = vis[on, ...].data
         vis1_off = vis[off, ...].data
         # because the nearby time are masked, we use futher ones.
         mask_off = np.zeros_like(on, dtype='bool')
         for i in range(off_t):
-            mask_off += np.roll(on, i+2) + np.roll(on, -i-2)
+            mask_off += np.roll(on, i+1) + np.roll(on, -i-1)
         mask     = vis_mask[mask_off, ...]
 
         vis_shp = vis1_off.shape
