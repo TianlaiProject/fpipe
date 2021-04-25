@@ -16,6 +16,8 @@ from tlpipe.rfi import interpolate
 from tlpipe.rfi import gaussian_filter
 from tlpipe.rfi import sum_threshold
 
+import logging
+logger = logging.getLogger(__name__)
 
 class Flag(timestream_task.TimestreamTask):
     """RFI flagging.
@@ -35,6 +37,8 @@ class Flag(timestream_task.TimestreamTask):
                     'tk_size': 1.0, # 128.0 for dish
                     'fk_size': 3.0, # 2.0 for dish
                     'threshold_num': 2, # number of threshold
+
+                    'bad_freqs' : [],
                   }
 
     prefix = 'rf_'
@@ -58,6 +62,8 @@ class Flag(timestream_task.TimestreamTask):
         """Function that does the actual flag."""
 
         vis = ts.vis
+
+        freq = ts['freq'][:]
 
         # if all have been masked, no need to flag again
         if ts.vis_mask[:].all():
@@ -90,6 +96,11 @@ class Flag(timestream_task.TimestreamTask):
         vis_mask = np.sum(ts.vis_mask[:], axis=(2, 3))
         if has_ns:
             vis_mask[on] = True # temporarily make ns_on masked
+
+        # remove GNSS contaminated freqs
+        for _bf in self.params['bad_freqs']:
+            logger.info('mask freq %f - %f MHz'%(_bf[0], _bf[1]))
+            vis_mask[:, (freq > _bf[0]) * (freq < _bf[1])] = True
 
         # first round
         # first complete masked vals due to ns by interpolate
