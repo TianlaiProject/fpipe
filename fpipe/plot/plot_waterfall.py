@@ -36,6 +36,7 @@ from fpipe.container.timestream import FAST_Timestream
 from fpipe.utils import axes_utils
 
 import logging
+import gc
 
 logger = logging.getLogger(__name__)
 
@@ -124,11 +125,11 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
 
     fig.clf()
 
-def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None):
+def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None, diff=False):
 
     fig = plt.figure(figsize=(12, 4))
-    ax  = fig.add_axes([0.07, 0.15, 0.85, 0.80])
-    cax = fig.add_axes([0.925, 0.15, 0.018, 0.80])
+    ax  = fig.add_axes([0.07, 0.15, 0.84, 0.80])
+    cax = fig.add_axes([0.915, 0.15, 0.018, 0.80])
 
     xlabel = None
     xmin =  1.e10
@@ -137,19 +138,37 @@ def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None):
     ymax = -1.e10
     for tblock in file_list:
         for fblock in tblock:
+            print fblock
             ts = FAST_Timestream(fblock)
             ts.load_all()
 
-            vis = ts['vis'][:, :, pi, bi].local_array
-            vis_mask = ts['vis_mask'][:, :, pi, bi].local_array
-            on = ts['ns_on'][:, bi].local_array
+            try:
+                vis = ts['vis'][:, :, pi, bi].local_array
+                vis_mask = ts['vis_mask'][:, :, pi, bi].local_array
+                on = ts['ns_on'][:, bi].local_array
+                time = ts['sec1970'][:].local_array
+            except AttributeError:
+                vis = ts['vis'][:, :, pi, bi]
+                vis_mask = ts['vis_mask'][:, :, pi, bi]
+                on = ts['ns_on'][:, bi]
+                time = ts['sec1970'][:]
+
             on = on.astype('bool')
+            freq = ts['freq'][:] * 1.e-3
+
+            if diff:
+                vis = vis[:, 1:] - vis[:, :-1]
+                vis_mask = vis_mask[:, 1:] + vis_mask[:, :-1]
+                freq = freq[1:]
 
             vis = np.ma.array(vis, mask=vis_mask)
             vis.mask += on[:, None]
 
-            time = ts['sec1970'][:].local_array
-            freq = ts['freq'][:] * 1.e-3
+            vis_mean, vis_std =np.ma.mean(vis), np.ma.std(vis) 
+            if vmin is None:
+                vmin = vis_mean - vis_std
+            if vmax is None:
+                vmax = vis_mean + vis_std
 
             x_axis = [ datetime.utcfromtimestamp(s) for s in time]
             if xlabel is None:

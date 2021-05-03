@@ -58,7 +58,7 @@ class Sir(timestream_task.TimestreamTask):
 
         eta = self.params['eta']
 
-        vis = ts.vis
+        #vis = ts.vis
 
         # has_ns = ('ns_on' in ts.iterkeys())
         # if has_ns:
@@ -76,7 +76,7 @@ class Sir(timestream_task.TimestreamTask):
         else:
             has_ns = False
 
-        vis_abs = np.sum(np.abs(vis), axis=(2, 3)) # sum over pol and feeds
+        #vis_abs = np.sum(np.abs(vis), axis=(2, 3)) # sum over pol and feeds
         mask = np.sum(ts.vis_mask[:], axis=(2, 3)).astype('bool')
 
         mask = sir_operator.vertical_sir(mask, eta)

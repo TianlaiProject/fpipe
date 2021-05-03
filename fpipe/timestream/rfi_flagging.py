@@ -9,6 +9,8 @@ Inheritance diagram
 """
 
 import numpy as np
+import h5py as h5
+import gc
 import timestream_task
 from fpipe.timestream import timestream_task
 from tlpipe.container.timestream import Timestream
@@ -39,6 +41,7 @@ class Flag(timestream_task.TimestreamTask):
                     'threshold_num': 2, # number of threshold
 
                     'bad_freqs' : [],
+                    'rfi_hist' : None,
                   }
 
     prefix = 'rf_'
@@ -54,6 +57,8 @@ class Flag(timestream_task.TimestreamTask):
 
         #func(self.flag, full_data=True, show_progress=show_progress, progress_step=progress_step, keep_dist_axis=False)
         self.flag(ts)
+        if self.params['rfi_hist'] is not None:
+            output_rfi_hist(ts, output=self.params['rfi_hist'])
 
         return super(Flag, self).process(ts)
 
@@ -140,3 +145,51 @@ class Flag(timestream_task.TimestreamTask):
         ts.vis_mask[:] += st.vis_mask[:, :, None, None]
         if has_ns:
             ts.vis_mask[on] = False # undo ns_on mask
+
+def output_rfi_hist(ts, tbins=None, fbins=[1050, 1140, 1310, 1450], output=None):
+    
+    if tbins is None:
+        nbin = 100
+        bins = np.logspace(-2, 5, nbin+1)
+    else:
+        bins = tbins
+        nbin = len(tbins) - 1
+    
+    hist = np.zeros((len(fbins)-1, nbin))
+    hist_nomask = np.zeros((len(fbins)-1, nbin))
+    
+    vis = ts['vis'][:]
+    vis_mask = ts['vis_mask'][:]
+    on = np.sum(ts['ns_on'], axis=1)
+    freq = ts['freq'][:]
+
+    #on = on.astype('bool')
+    # rm nd on
+    vis = vis[~on]
+    vis_mask = vis_mask[~on]
+    vis_mask = vis_mask.astype('bool')
+
+    freq = freq[1:]
+
+    msk = vis_mask[:, 1:, ...] + vis_mask[:, :-1, ...]
+    vis_diff = np.abs(vis[:, 1:, ...] - vis[:, :-1, ...])
+    #vis_diff = np.ma.array(vis_diff, mask=msk)
+
+    for jj in range(hist.shape[0]): 
+        freq_sel = (freq > fbins[jj]) * (freq < fbins[jj+1])
+        _vis_diff = vis_diff[:, freq_sel, ...].flatten()
+        hist_nomask[jj] += np.histogram(_vis_diff, bins=bins)[0]
+        _msk = msk[:, freq_sel, ...].flatten()
+        _vis_diff[_msk] = -1
+        hist[jj] += np.histogram(_vis_diff, bins=bins)[0]
+        del _vis_diff, _msk
+
+    del vis, ts, vis_diff, msk
+    gc.collect()
+        
+    if output is not None:
+        with h5.File(output, 'w') as f:
+            f['hist'] = hist
+            f['hist_nomask'] = hist_nomask
+            f['fbin'] = np.array(fbins)
+            f['Tbin'] = bins
