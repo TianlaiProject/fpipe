@@ -1,5 +1,6 @@
 from fpipe.map import dirtymap, cleanmap
 from fpipe.map import algebra as al
+from tlpipe.utils.path_util import output_path
 from caput import mpiutil
 from numpy.linalg import multi_dot
 import gc
@@ -13,6 +14,7 @@ import logging
 
 __dtype__ = 'float32'
 logger = logging.getLogger(__name__)
+
 
 class DirtyMap_healpix(dirtymap.DirtyMap):
     
@@ -169,14 +171,16 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
             else:
                 logger.debug(msg)
 
-            _vis = vis[:, p_idx, b_idx]
             _vis_mask = vis_mask[:, p_idx, b_idx]
             
             if np.all(_vis_mask):
                 print " VIS (" + ("%03d, "*len(_vis_idx))%_vis_idx + ")" +\
                         " All masked, continue"
                 #self.df['mask'][map_idx[:-1]] = 1
+                del _vis_mask
                 continue
+
+            _vis = vis[:, p_idx, b_idx]
 
             ra   = ts['ra'][:,  b_idx]
             dec  = ts['dec'][:, b_idx]
@@ -204,6 +208,8 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
                                diag_cov = self.params['diag_cov'],
                                beam_size= beam_fwhm,
                                beam_cut = self.params['beam_cut'])
+            del _vis, _vis_mask
+            gc.collect()
 
         logger.debug('write to disk')
         _dm.shape = map_shp
@@ -215,7 +221,6 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         self.write_block_to_dset('cov_inv', map_idx, _ci)
         del _ci, _dm
         gc.collect()
-        
         
 def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis, nside,
                    ra_range, dec_range, cov_inv_block, dirty_map, diag_cov=False,

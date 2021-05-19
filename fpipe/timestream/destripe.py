@@ -18,9 +18,10 @@ class TimeVar_Cal(timestream_task.TimestreamTask):
 
     params_init = {
             'gt_file' : None,
+            'ps_file' : None,
             'fk' : 0.01,
             'alpha' : 1.5,
-            'l' : 5,
+            'l' : 10,
             }
 
     prefix = 'gtcal_'
@@ -44,44 +45,52 @@ class TimeVar_Cal(timestream_task.TimestreamTask):
         alpha = self.params['alpha']
         l     = self.params['l']
 
-        with h5py.File(self.params['gt_file'], 'r') as f:
-            nd= f['gtgnu'][:, :, :, bl[0]-1]
-            freq  = f['freq'][:]
-            nd_time  = f['time'][:]
-            print 'Feed%02d '%(bl[0])
+        gt_file = self.params['gt_file']
+        ps_file = self.params['ps_file']
 
-            #bandpass_interp = interpolate.interp1d(_bandfreq, _bandpass, axis=0)
-            #bandpass = bandpass_interp(ts['freq'][:])
+        #with h5py.File(self.params['gt_file'], 'r') as f:
+        #    nd= f['gtgnu'][:, :, :, bl[0]-1]
+        #    freq  = f['freq'][:]
+        #    nd_time  = f['time'][:]
+        #    print 'Feed%02d '%(bl[0])
+
+        #    #bandpass_interp = interpolate.interp1d(_bandfreq, _bandpass, axis=0)
+        #    #bandpass = bandpass_interp(ts['freq'][:])
 
         time = ts['sec1970'][:]
-        nd = np.ma.masked_invalid(nd)
 
-        # ignore freq between 1200-1300 due to strong RFI residule
-        nd.mask[:, 200:600, :] = True
-        gt  = np.ma.median(nd, axis=1)
-        var = np.ma.median(nd, axis=1)
+        gt_smooth = get_gt(bl[0]-1, gt_file, ps_file, l, time)[-1]
+        gt_xx = gt_smooth[:, 0]
+        gt_yy = gt_smooth[:, 1]
 
-        gt_m = np.ma.mean(gt, axis=0)
-        gt_s = np.ma.std(gt, axis=0)
-        # there are still some RFI, flag peaks ove 3 sigma
-        good = np.abs(gt - gt_m[None, :]) - 3 * gt_s[None, :] < 0.
+        #nd = np.ma.masked_invalid(nd)
 
-        # remove mean before destriping
-        gt = gt - gt_m[None, :]
+        ## ignore freq between 1200-1300 due to strong RFI residule
+        #nd.mask[:, 200:600, :] = True
+        #gt  = np.ma.median(nd, axis=1)
+        #var = np.ma.median(nd, axis=1)
 
-        gt_xx = destriping(l, gt[good[:, 0], 0], var[good[:, 0], 0], 
-                nd_time[good[:, 0]], fk, alpha)(time).flatten()
-        gt_yy = destriping(l, gt[good[:, 1], 1], var[good[:, 1], 1], 
-                nd_time[good[:, 1]], fk, alpha)(time).flatten()
+        #gt_m = np.ma.mean(gt, axis=0)
+        #gt_s = np.ma.std(gt, axis=0)
+        ## there are still some RFI, flag peaks ove 3 sigma
+        #good = np.abs(gt - gt_m[None, :]) - 3 * gt_s[None, :] < 0.
 
-        #plt.plot(gt_xx, label='Feed%02d'%bl[0])
-        #plt.plot(gt_yy)
-        #plt.legend()
-        #plt.show()
+        ## remove mean before destriping
+        #gt = gt - gt_m[None, :]
 
-        # add mean back after destriping
-        gt_xx = gt_xx + gt_m[0]
-        gt_yy = gt_yy + gt_m[1]
+        #gt_xx = destriping(l, gt[good[:, 0], 0], var[good[:, 0], 0], 
+        #        nd_time[good[:, 0]], fk, alpha)(time).flatten()
+        #gt_yy = destriping(l, gt[good[:, 1], 1], var[good[:, 1], 1], 
+        #        nd_time[good[:, 1]], fk, alpha)(time).flatten()
+
+        ##plt.plot(gt_xx, label='Feed%02d'%bl[0])
+        ##plt.plot(gt_yy)
+        ##plt.legend()
+        ##plt.show()
+
+        ## add mean back after destriping
+        #gt_xx = gt_xx + gt_m[0]
+        #gt_yy = gt_yy + gt_m[1]
 
         gt_xx[gt_xx==0] = np.inf
         gt_yy[gt_yy==0] = np.inf
@@ -89,6 +98,64 @@ class TimeVar_Cal(timestream_task.TimestreamTask):
         vis[:, :, 0] /= gt_xx[:, None]
         vis[:, :, 1] /= gt_yy[:, None]
 
+def get_gt(bi, gtgnu_file, gtps_file, l, t=None):
+
+    with h5py.File(gtps_file, 'r') as f:
+        ps_para = f['paras'][:]
+        ps_result  = f['ps_result'][bi]
+        er_result  = f['er_result'][bi]
+        bc         = f['f_result'][:]
+
+    with h5py.File(gtgnu_file, 'r') as f:
+        nd    = f['gtgnu'][:]
+        time  = f['time'][:]
+        freq  = f['freq'][:]
+        mask  = f['mask'][:]
+
+    if t is None: t = time
+
+    nd = np.ma.array(nd, mask=mask)
+    nd = np.ma.masked_invalid(nd)
+
+    gt = np.ma.median(nd[:, :, :, bi], axis=1)
+    var = np.ma.var(nd[:, :, :, bi], axis=1)
+
+    gt_m = np.ma.median(gt, axis=0)
+    gt_s = np.ma.std(gt, axis=0)
+    gt_smooth =  gt.copy() - gt_m[None, :]
+
+    good = np.abs(gt_smooth) - 6.*gt_s[None, :] < 0.
+    gt = np.ma.array(gt, mask=False)
+    gt.mask += ~good
+
+    fk    = ps_para[bi, 0, 1]
+    alpha = ps_para[bi, 0, 2]
+    B     = ps_para[bi, 0, 3]
+    f0    = ps_para[bi, 0, 4]
+    w     = ps_para[bi, 0, 5]
+    #print '%02d: XX [%e, %e]  '%(bi+1, fk, alpha),
+    pkf = None 
+    #pkf = interp1d(bc, ps_result[:, 0], bounds_error=False, fill_value=0)
+            #fill_value='extrapolate')
+    gt_smooth_xx = destriping(l, gt_smooth[good[:, 0], 0],
+            var[good[:, 0], 0], time[good[:, 0]], 
+            fk, alpha, B, f0, w, pkf=pkf)(t)
+
+    fk    = ps_para[bi, 1, 1]
+    alpha = ps_para[bi, 1, 2]
+    B     = ps_para[bi, 1, 3]
+    f0    = ps_para[bi, 1, 4]
+    w     = ps_para[bi, 1, 5]
+    gt_smooth_yy = destriping(l, gt_smooth[good[:, 1], 1],
+            var[good[:, 1], 1], time[good[:, 1]], 
+            fk, alpha, B, f0, w)(t)
+
+    gt_smooth = np.concatenate([gt_smooth_xx[0][:, None], 
+                                gt_smooth_yy[0][:, None]], axis=1)
+
+    gt_smooth =  gt_smooth + gt_m[None, :]
+
+    return gt, time, gt_smooth
 
 def Ctt(fk, alpha, time):
     '''
@@ -123,19 +190,21 @@ def Ctt(fk, alpha, time):
 
     return C_tt
 
-def evaluate_cov_with_fn_realization(alpha, fk, time, N=1000):
+def evaluate_cov_with_fn_realization(alpha, fk, B, f0, w,  time, pkf=None, N=1000):
 
     ntime = time.shape[0]
     dtime = time[1] - time[0]
 
-    gamma = -alpha
-    P = lambda f: (f/fk)**gamma
+    if pkf is None:
+        gamma = -alpha
+        P = lambda f: (f/fk)**gamma + B / (1. + ((f - f0) / w )**2.)
+    else:
+        print 'use evaluated pkf'
+        P = pkf
 
     f_axis = np.fft.fftfreq( ntime, d=dtime)
     f_abs = np.abs(f_axis)
     f_abs[f_abs==0] = np.inf
-
-    f0 = fk
 
     fn_psd = P(f_abs)
 
@@ -156,7 +225,7 @@ def evaluate_cov_with_fn_realization(alpha, fk, time, N=1000):
     return  np.cov(fn_r, rowvar=False)
 
 
-def destriping(l, vis, var, time, fk, alpha):
+def destriping(l, vis, var, time, fk, alpha, B, f0, w, pkf=None):
 
     n_time = time.shape[0]
     I = np.mat(np.eye(n_time))
@@ -177,7 +246,7 @@ def destriping(l, vis, var, time, fk, alpha):
 
     if fk is not None:
         #C_tt = Ctt(fk, alpha, time) * var
-        C_tt = evaluate_cov_with_fn_realization(alpha, fk, time) * var
+        C_tt = evaluate_cov_with_fn_realization(alpha, fk, B, f0, w, time, pkf=pkf) * var
         C_tt = np.mat(C_tt)
         Ca = ((F.T * F).I)**2 * F.T * C_tt * F
         #Ca = F.T * C_tt * F

@@ -9,19 +9,22 @@ from fpipe.timestream import bandpass_cal
 import h5py as h5
 
 #def fit_fn(f, ps, ps_err, pars = [1.e-3, 1.e-3, 1.5]):
-def fit_fn(f, ps, ps_err, pars = [-3, -3, 1.5], bounds=([-4, -5, 0.1], [0, -1, 3.99])):
+def fit_fn(f, ps, ps_err, pars = [0, -3, 1.5, 100., -3.5, -4], 
+        bounds=([-4, -5, 0.1, 0, -3.6, -5], [0, -1, 6.99, 150, -3.4, -3])):
 
     if np.all(ps_err==0):
         ps_err = np.ones_like(ps) * 10.
         ps_err[ps<=0] = 0.
 
     good  = ps_err > 0
-    #good[:4] = False
+    good[:2] = False
 
     _f = np.logspace(np.log10(f.min()), np.log10(f.max()), 100)
 
     func = lambda p, f: (10.**p[0]) * ( 1. + ((10.**p[1])/f)**p[2])
-    residuals = lambda p, f, y, yerr: (np.log10(y) - np.log10(func(p, f)))/np.log10(yerr)
+    func2= lambda p, f: (10.**p[0])*p[3] / (1. + ((f - 10.**p[4])/(10.**p[5]))**2.)
+    residuals = lambda p, f, y, yerr: (np.log10(y) \
+            - np.log10(func(p, f) + func2(p, f)))/np.log10(yerr)
     r = least_squares(residuals, pars, 
                       args=(f[good], ps[good], ps_err[good]), 
                       bounds = bounds,
@@ -29,7 +32,7 @@ def fit_fn(f, ps, ps_err, pars = [-3, -3, 1.5], bounds=([-4, -5, 0.1], [0, -1, 3
                       #loss = 'linear', method='lm')
     #r.x[0] = 10. ** r.x[0]
     #r.x[1] = 10. ** r.x[1]
-    return func(r.x, _f), _f, r.x
+    return func(r.x, _f) + func2(r.x, _f), _f, r.x
 
     #func = lambda f, p0, p1, p2:  p0 * ( 1. + (p1/f)**p2)
     #popt, pcov = curve_fit(func, f[good], ps[good], pars, maxfev=10000,
@@ -56,16 +59,23 @@ def est_gt_ps(file_list, Tnoise_file=None, avg_len=21, output='./gt_ps.h5'):
         mask = nd.mask
         _nd_t, mask, freq = avg_freq(nd, mask, freq, avg_len=avg_len)
         if _nd_t.shape[1] > 1:
+            #print 'mask bad freq'
             bad_freq = np.sum(mask, axis=(0, 2)) > 0.8*(2 * _nd_t.shape[1])
             mask = mask[:, ~bad_freq, ...]
             _nd_t = _nd_t[:, ~bad_freq, ...]
         n_freq = _nd_t.shape[1]
         #print "%d unmasked freq channels"%n_freq
+        #print _nd_t.max(), _nd_t.min()
+
+        gt_m = np.ma.median(_nd_t, axis=0)
+        gt_s = np.ma.std(_nd_t, axis=0)
+        good = np.abs(_nd_t - gt_m[None, :]) - 6.*gt_s[None, :] < 0.
+        mask += ~good
 
         dtime = time[1] - time[0]
         f_max = 1./ dtime / 2.
-        f_min = 1./ dtime / float(time.shape[0])
-        ps, bc = est_tcorr_psd1d_fft(_nd_t, time, mask, n_bins = 15, 
+        f_min = 1./ dtime / float(time.shape[0]) #* 4.
+        ps, bc = est_tcorr_psd1d_fft(_nd_t, time, mask, n_bins = 20, 
                                      f_min=f_min, f_max=f_max)
 
         ps_mean = np.mean(ps, axis=1)
@@ -103,17 +113,17 @@ def est_tcorr_psd1d_fft(data, ax, flag, n_bins=None, inttime=None,
     data = data.copy()
 
     #mean = np.mean(data[~flag, ...], axis=0)
-    mean = np.ma.mean(data, axis=0)
+    mean = np.ma.median(data, axis=0)
     std  = np.ma.std(data, axis=0)
     data -= mean[None, :, :]
 
-    fill = np.random.standard_normal(data.shape) * std[None, ...]
+    fill = np.random.standard_normal(data.shape) * std[None, ...] * 0.1
     fill[~flag] = 0.
     data += fill
     #data[flag, ...] = 0.
 
     weight = np.ones_like(data)
-    #weight[flag, ...] = 0
+    weight[flag, ...] = 0
 
     windowf_t = np.blackman(data.shape[0])[:, None, None]
     windowf = windowf_t
@@ -183,7 +193,8 @@ def avg_freq(vis, mask, freq, avg_len=20):
     mask = mask[:, :split_n * avg_len, :]
     vis.shape = (time_n, split_n, avg_len, pol_n)
     mask.shape = (time_n, split_n, avg_len, pol_n)
-    vis = np.ma.mean(vis, axis=2)
+    #vis = np.ma.mean(vis, axis=2)
+    vis = np.ma.median(vis, axis=2)
     if split_n != 1:
         mask = np.sum(mask, axis=2) > 0.6 * avg_len
     else:

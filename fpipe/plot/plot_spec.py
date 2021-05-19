@@ -34,9 +34,13 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
 
             freq, spec, p_ra, p_dec \
                     = source.get_map_spec(map_name, 'clean_map', _s[3], _s[4], 
-                            beam_size=None)
+                            beam_size=3./60.)
             spec = np.ma.masked_equal(spec, 0)
-            ax1.plot(freq, spec, 'ro', ms=5, mfc='none')
+            if np.all(spec.mask) or spec.shape[1] == 0:
+                plt.close()
+                plt.clf()
+                continue
+            ax1.plot(freq, spec, '.-', ms=5, mfc='none')
 
             ymax = max(ymax, np.ma.median(spec) * 1.5)
 
@@ -70,11 +74,11 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
         ax0 = pm.plot_map_hp(map_name, map_key=map_key,
                 #map_key='noise_diag',
                 pix=0.5/60., indx=(slice(0, None), ), imap_shp = (50, 50),
-                field_center=(_s[3], _s[4]), figsize=(6, 3), 
+                field_center=[(_s[3], _s[4]),], figsize=(6, 3), 
                 vmin=vmin, vmax=vmax, sigma = None,
                 title='', proj='ZEA', cmap='Blues',
                 axes = (fig, [0.65, 0.13, 0.27, 0.8], cax),
-                verbose=False)[1]
+                verbose=False)[1][0]
 
         _nvss_range = [_s[3] - 25 * 0.5/60., _s[3] + 25 * 0.5/60.,
                        _s[4] - 25 * 0.5/60., _s[4] + 25 * 0.5/60.]
@@ -99,6 +103,8 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
             else:
                 fig.savefig(output_path + '%s.png'%(_s[2].replace(' ', '-')), 
                         formate='png', dpi=300)
+        plt.show()
+        plt.clf()
 
 
 def check_spec(source_list, output=None):

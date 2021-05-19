@@ -71,15 +71,16 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
 
         return 1
 
-    def process(self, input):
+    def _indx_f(self, x, shp): 
+        if x >= np.prod(shp): return 
+        _i = [int(x / np.prod(shp[1:])), ]
+        for i in range(1, len(shp)): 
+            x -= _i[i-1] * np.prod(shp[i:])
+            _i += [int(x / np.prod(shp[i+1:])),]
+        return tuple(_i)
 
-        def _indx_f(x, shp): 
-            if x >= np.prod(shp): return 
-            _i = [int(x / np.prod(shp[1:])), ]
-            for i in range(1, len(shp)): 
-                x -= _i[i-1] * np.prod(shp[i:])
-                _i += [int(x / np.prod(shp[i+1:])),]
-            return tuple(_i)
+
+    def process(self, input):
 
         diag_cov  = self.params['diag_cov']
         threshold = self.params['threshold']
@@ -89,14 +90,12 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
             task_n = np.prod(self.map_shp[:-2])
 
         for task_ind in mpiutil.mpirange(task_n):
-
-
             if self.params['healpix']:
                 map_shp = self.map_shp[-1:]
-                indx = _indx_f(task_ind, self.map_shp[:-1])
+                indx = self._indx_f(task_ind, self.map_shp[:-1])
             else:
                 map_shp = self.map_shp[-2:]
-                indx = _indx_f(task_ind, self.map_shp[:-2])
+                indx = self._indx_f(task_ind, self.map_shp[:-2])
 
             #print mpiutil.rank,  indx
             print "RANK%03d: ("%mpiutil.rank + ("%04d, "*len(indx))%indx + ")"

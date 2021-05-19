@@ -53,10 +53,10 @@ def get_map_spec(map_name, map_key, ra, dec, beam_size=3./60.):
         _w = np.exp( - 0.5 * ( (_w[0] - ra)**2 + (_w[1] - dec)**2 ) / beam_sig **2 )
         spec = []
         for i in range(_p.shape[0]):
-            print _w[i],
+            #print _w[i],
             spec.append( imap[:, (pixs - _p[i]) == 0][None, :] / _w[i])
             #spec.append( imap[:, (pixs - _p[i]) == 0][None, :] )
-        print 
+        #print 
 
         spec = np.concatenate(spec, axis=0)
         spec = np.ma.masked_equal(spec, 0)
@@ -64,7 +64,11 @@ def get_map_spec(map_name, map_key, ra, dec, beam_size=3./60.):
         spec = np.ma.mean(spec, axis=0)
         #spec = np.ma.sum(spec, axis=0)
 
-        return freq, spec, ra, dec
+        _p = hp.ang2pix(nside, ra+8./60., dec, lonlat=True)
+        where = (pixs - _p) == 0
+        spec_off = imap[:, where]
+
+        return freq, spec - spec_off, ra, dec
 
 
     return None

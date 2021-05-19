@@ -153,6 +153,11 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
         tnoise_md = f['Tnoise'][:]
         tnoise_md_freq = f['freq'][:]
 
+    eta_list = []
+    for bi, eta_f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list, 
+            band_list, tnoise_model, pol):
+        eta_list.append(eta)
+
     legend_list = []
     ci = 0
     for date in key_list_dict.keys():
@@ -165,9 +170,16 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
 
             ax = axes[beam-1]
 
-
             eta = interp1d(tnoise_md_freq, tnoise_md[:, pol, beam-1])(freq) / A[:, pol]
-            ax.plot(freq/1.e3, eta, color=_c_list[ci], lw=0.1)
+            ax.plot(freq/1.e3, eta, color=_c_list[ci], lw=0.05)
+
+            #_eta = interp1d(eta_f, eta_list[beam-1])(freq)
+            #xx = np.linspace(0, 1, freq.shape[0]) #freq[~eta.mask]
+            #msk = eta.mask
+            #yy = (eta - _eta)[~msk]
+            #eta_poly = np.poly1d(np.polyfit(xx[~msk], yy, 2))
+            #yy = eta_poly(xx)
+            #ax.plot(freq/1.e3, yy + _eta[beam-1], color=_c_list[ci], lw=0.5)
 
             if freq.min()/1.e3 < xmin: xmin=freq.min()/1.e3
             if freq.max()/1.e3 > xmax: xmax=freq.max()/1.e3
@@ -176,15 +188,21 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
                                           label=r'%s'%date.replace('_', ' ')))
         ci += 1
 
-    #for bi in range(19):
-    for bi, f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list, 
+    for ii, key, bi, f, eta in abs_cal.iter_fit_eta_days(result_path, key_list_dict, beam_list, 
             band_list, tnoise_model, pol):
+
+        ax = axes[bi]
+        ax.plot(f/1.e3, eta, color=_c_list[ii], lw=1.0)
+
+    #for bi, f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list, 
+    #       band_list, tnoise_model, pol):
+    for bi in range(19):
 
         ii = bi / 4
         jj = bi % 4
 
         ax = axes[bi]
-        ax.plot(f/1.e3, eta, color='k', lw=1.0)
+        ax.plot(eta_f/1.e3, eta_list[bi], color='k', lw=1.0)
         ax.text(0.1, 0.85, 'Feed%02d'%bi, transform=ax.transAxes)
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(0.51, 0.99)
@@ -291,10 +309,16 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
         tnoise_md = f['Tnoise'][:]
         tnoise_md_freq = f['freq'][:]
 
-    eta_list = []
-    for bi, eta_f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list, 
+    eta_list = [] #[[], ] * len(key_list_dict.keys())
+    #for bi, eta_f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list, 
+    #        band_list, tnoise_model, pol):
+    for ii, key, bi, eta_f, eta in abs_cal.iter_fit_eta_days(result_path, key_list_dict, beam_list, 
             band_list, tnoise_model, pol):
         eta_list.append(eta)
+
+    eta_list = np.array(eta_list)
+    eta_list.shape = (len(key_list_dict.keys()), 19, -1)
+
 
     legend_list = []
     ci = 0
@@ -311,7 +335,7 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
 
             #eta = interp1d(tnoise_md_freq, tnoise_md[:, pol, beam-1])(freq) / A[:, pol]
             #ax.plot(freq/1.e3, eta, color=_c_list[ci], lw=0.1)
-            _eta = interp1d(eta_f, eta_list[beam-1])(freq)
+            _eta = interp1d(eta_f, eta_list[ci, beam-1])(freq)
             ax.plot(freq/1.e3, A[:, pol]*_eta, color=_c_list[ci], lw=0.1)
 
 
@@ -350,7 +374,7 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
 
 def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
                      band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
-                     tnoise_model=None, pol=0, output=None):
+                     tnoise_model=None, pol=0, output=None, eta_path=None):
 
     _p = ['XX', 'YY']
 
@@ -360,15 +384,30 @@ def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
         tnoise_md = f['Tnoise'][:]
         tnoise_md_freq = f['freq'][:]
 
-    eta_list = []
-    for bi, eta_f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list,
-            band_list, tnoise_model, pol):
-        eta_list.append(eta)
+    if eta_path is None:
+        eta_list = []
+        #for bi, eta_f, eta in abs_cal.iter_avg_eta(result_path, key_list_dict, beam_list,
+        #        band_list, tnoise_model, pol):
+        #    eta_list.append(eta)
+        for ii, key, bi, eta_f, eta in abs_cal.iter_fit_eta_days(result_path, 
+                key_list_dict, beam_list, band_list, tnoise_model, pol):
+            eta_list.append(eta)
+
+        eta_list = np.array(eta_list)
+        eta_list.shape = (len(key_list_dict.keys()), 19, -1)
+
 
     legend_list = []
     ci = 0
     peak = []
     for date in key_list_dict.keys():
+
+        if eta_path is not None:
+            with h5.File(eta_path + 'eta_%s.h5'%date, 'r') as f:
+                _eta_list = f['eta'][:, pol, :]
+                eta_f = f['eta_f'][:]
+        else:
+            _eta_list = eta_list[ci]
 
         _peak = []
         key_list = key_list_dict[date]
@@ -380,7 +419,7 @@ def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
                 A, mu, fwhm, sigma2, freq = abs_cal.load_fitting_params(path)
 
                 Tnd_th = interp1d(tnoise_md_freq, tnoise_md[:, pol, beam-1])(freq)
-                _eta = interp1d(eta_f, eta_list[beam-1])(freq)
+                _eta = interp1d(eta_f, _eta_list[beam-1])(freq)
                 Tnd = A[:, pol]*_eta
 
                 Tnd_diff.append(Tnd / Tnd_th - 1.)

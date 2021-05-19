@@ -1,6 +1,6 @@
 import numpy as np
 import gc
-from fpipe.timestream import timestream_task
+from fpipe.timestream import timestream_task, rm_baseline
 from fpipe.utils import axes_utils
 import h5py as h5
 from astropy.time import Time
@@ -18,7 +18,12 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import cm
 
+from astropy import units as u
+import matplotlib.dates as mdates
+from datetime import datetime, timedelta
+
 from scipy.optimize import least_squares, curve_fit
+from scipy import signal
 
 import pandas as pd
 from IPython.display import HTML
@@ -70,7 +75,10 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
     _result = [("F%02d"%(ii+1), ) + tuple(x.flatten()) for ii, x in enumerate(paras_list)]
     _result = np.array(_result, dtype = [('Feed', 'S3'),
         ('A XX', 'f4'), ('fk XX', 'f4'), ('alpha XX', 'f4'),
-        ('A YY', 'f4'), ('fk YY', 'f4'), ('alpha YY', 'f4')])
+        ('B XX', 'f4'), ('f0 XX', 'f4'), ('w     XX', 'f4'),
+        ('A YY', 'f4'), ('fk YY', 'f4'), ('alpha YY', 'f4'),
+        ('B YY', 'f4'), ('f0 YY', 'f4'), ('w     YY', 'f4'),
+        ])
     _result = HTML(pd.DataFrame(_result).to_html(index=False))
 
     return _result
@@ -82,31 +90,27 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
     #fk = 0.01
     #alpha = 1.5
 
-    if gtps_file is not None:
-        with h5.File(gtps_file, 'r') as f:
-            ps_para = f['paras'][:]
+    #if gtps_file is not None:
+    #    with h5.File(gtps_file, 'r') as f:
+    #        ps_para = f['paras'][:]
 
-    with h5.File(file_name, 'r') as f:
-        nd    = f['gtgnu'][:]
-        time  = f['time'][:]
-        freq  = f['freq'][:]
-        mask  = f['mask'][:]
+    #with h5.File(file_name, 'r') as f:
+    #    nd    = f['gtgnu'][:]
+    #    time  = f['time'][:]
+    #    freq  = f['freq'][:]
+    #    mask  = f['mask'][:]
 
-    nd = np.ma.array(nd, mask=mask)
-    nd = np.ma.masked_invalid(nd)
+    #nd = np.ma.array(nd, mask=mask)
+    #nd = np.ma.masked_invalid(nd)
 
-    #nd[:, 200:600, ...] = 0
-    #nd.mask[:, 200:600, ...] = True
+    #_nd_t = np.ma.mean(nd, axis=1, )
+    #good = (np.abs(_nd_t - np.ma.mean(_nd_t, axis=0)[None, :,:]) \
+    #        - 6.*np.ma.std(_nd_t, axis=0)[None, :, :])<0
 
-    _nd_t = np.ma.mean(nd, axis=1, )
-    good = (np.abs(_nd_t - np.ma.mean(_nd_t, axis=0)[None, :,:]) \
-            - 6.*np.ma.std(_nd_t, axis=0)[None, :, :])<0
-    #nd.mask += ~good[:, None, :, :]
-
-    #time -= time[0]
-    #time /= 3600.
-    xx = time - time[0]
-    xx /= 3600.
+    ##time -= time[0]
+    ##time /= 3600.
+    #xx = time - time[0]
+    #xx /= 3600.
 
     fig, axes = axes_utils.setup_axes(5, 4, colorbar=False, title=title)
 
@@ -115,46 +119,52 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
         j = bi - i * 4
 
         ax = axes[bi]
-        gt = np.ma.median(nd[:, :, :, bi], axis=1)
-        var = np.ma.var(nd[:, :, :, bi], axis=1)
+
+        #gt = np.ma.median(nd[:, :, :, bi], axis=1)
+        #var = np.ma.var(nd[:, :, :, bi], axis=1)
         #var = np.ma.median(nd[:, :, :, bi], axis=1)
         #var[var==0] = np.inf
+
+        gt, time, gt_smooth = destripe.get_gt(bi, file_name, gtps_file, l)
+
+        xx = time - time[0]
+        xx /= 3600.
 
         ax.plot(xx, gt[:, 0], 'r-', lw=0.1)
         ax.plot(xx, gt[:, 1], 'b-', lw=0.1)
 
-        if do_destripe:
-            gt_m = np.ma.median(gt, axis=0)
-            gt -= gt_m[None, :]
+        #if do_destripe:
+        #    gt_m = np.ma.median(gt, axis=0)
+        #    gt -= gt_m[None, :]
 
-            if gtps_file is not None:
-                #fk = min(ps_para[bi, 0, 1], 2.e-3)
-                #alpha = min(ps_para[bi, 0, 2], 1.9)
-                fk    = ps_para[bi, 0, 1]
-                alpha = ps_para[bi, 0, 2]
-                #print '%02d: XX [%e, %e]  '%(bi+1, fk, alpha),
-            gt[:, 0] = destripe.destriping(l,
-                                           gt[good[:, 0, bi], 0],
-                                           var[good[:, 0, bi], 0],
-                                           time[good[:, 0, bi]],
-                                           fk, alpha)(time)
-            if gtps_file is not None:
-                #fk = min(ps_para[bi, 1, 1], 2.e-3)
-                #alpha = min(ps_para[bi, 1, 2], 1.9)
-                fk    = ps_para[bi, 1, 1]
-                alpha = ps_para[bi, 1, 2]
-                #print 'YY [%e, %e]  '%(fk, alpha)
-            gt[:, 1] = destripe.destriping(l,
-                                           gt[good[:, 0, bi], 1],
-                                           var[good[:, 0, bi], 1],
-                                           time[good[:, 0, bi]],
-                                           fk, alpha)(time)
-            #gt = median_filter(gt, [11, 1])
+        #    if gtps_file is not None:
+        #        #fk = min(ps_para[bi, 0, 1], 2.e-3)
+        #        #alpha = min(ps_para[bi, 0, 2], 1.9)
+        #        fk    = ps_para[bi, 0, 1]
+        #        alpha = ps_para[bi, 0, 2]
+        #        #print '%02d: XX [%e, %e]  '%(bi+1, fk, alpha),
+        #    gt[:, 0] = destripe.destriping(l,
+        #                                   gt[good[:, 0, bi], 0],
+        #                                   var[good[:, 0, bi], 0],
+        #                                   time[good[:, 0, bi]],
+        #                                   fk, alpha)(time)
+        #    if gtps_file is not None:
+        #        #fk = min(ps_para[bi, 1, 1], 2.e-3)
+        #        #alpha = min(ps_para[bi, 1, 2], 1.9)
+        #        fk    = ps_para[bi, 1, 1]
+        #        alpha = ps_para[bi, 1, 2]
+        #        #print 'YY [%e, %e]  '%(fk, alpha)
+        #    gt[:, 1] = destripe.destriping(l,
+        #                                   gt[good[:, 0, bi], 1],
+        #                                   var[good[:, 0, bi], 1],
+        #                                   time[good[:, 0, bi]],
+        #                                   fk, alpha)(time)
+        #    #gt = median_filter(gt, [11, 1])
 
-            gt += gt_m[None, :]
+        #    gt += gt_m[None, :]
 
-            ax.plot(xx, gt[:, 0], 'r-', lw=1)
-            ax.plot(xx, gt[:, 1], 'b-', lw=1)
+        ax.plot(xx, gt_smooth[:, 0], 'r-', lw=1)
+        ax.plot(xx, gt_smooth[:, 1], 'b-', lw=1)
 
         #ax.legend(title='Feed %02d'%(bi+1), loc=2)
         ax.text(0.04, 0.8, 'Feed %02d'%(bi+1), transform=ax.transAxes,
@@ -176,40 +186,108 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
         plt.show()
         plt.clf()
 
-def plot_baseline(baseline_file):
+def plot_baseline(file_list, output_name=None, axes=None, utc=True,tz=8):
+
+    baseline_list = []
+    for fs in file_list:
+        _baseline, time = rm_baseline._output_baseline(fs)
+        baseline_list.append(_baseline[None, ...])
+    baseline_list = np.ma.concatenate(baseline_list, axis=0)
+    #baseline = np.ma.median(baseline_list, axis=0)
+
+    #l = 100
+    #baseline_pad = np.pad(baseline, ((l, l), (0, 0), (0, 0)), 'symmetric')
+    #baseline = signal.medfilt(baseline_pad, [2*l+1, 1, 1])[l:-l]
     
-    with h5.File(baseline_file, 'r') as f:
-        baseline = f['baseline'][:]
-        time = f['time'][:]
-    
-    fig, axes = axes_utils.setup_axes(5, 4, colorbar=False)
-    
-    for bi in range(19):
-        
-        i = bi / 4
-        j = bi % 4
-        
+    if utc:
+        _tz = (tz * u.hour).to(u.s).value
+        xx = [datetime.utcfromtimestamp(s+_tz) for s in time]
+        xlabel = "UTC+%02d %s %s"%(tz, xx[0].date(), xx[0].time())
+        xx = mdates.date2num(xx)
+    else:
         xx = time - time[0]
         xx /= 3600.
+    
+    cnorm = mpl.colors.Normalize(vmin=0, vmax=18)
+    
+    if axes is None:
+        fig = plt.figure(figsize=(7, 3))
+        ax  = fig.add_axes([0.12, 0.16, 0.83, 0.79])
+    else:
+        fig, ax = axes
+    
+    for baseline in baseline_list:
+        _m = np.ma.mean(baseline, axis=0)
+        baseline -= _m[None, ...]
+    
+        baseline_median = np.ma.median(baseline, axis=(1, 2))
+    
+        for i in range(19):
+            
+            ax.plot(xx, baseline[:, 0, i], c=cm.jet(cnorm(i)), lw=0.1)
+            ax.plot(xx, baseline[:, 1, i], c=cm.jet(cnorm(i)), lw=0.1)
         
-        ax = axes[bi]
+        #plt.plot(baseline_median, 'k-', lw=0.5)
+    
+        l = 100
+        baseline_pad = np.pad(baseline_median, l, 'symmetric')
+        baseline = signal.medfilt(baseline_pad, [2*l+1,])[l:-l]
+        ax.plot(xx, baseline, 'k-', lw=1.5)
         
-        ax.plot(xx, baseline[:, 0, bi], 'r-', lw=1)
-        ax.plot(xx, baseline[:, 1, bi], 'b-', lw=1)
-        
-        ax.text(0.04, 0.8, 'Feed %02d'%bi, transform=ax.transAxes,
-                bbox=dict(facecolor='w', alpha=0.5, ec='none'))
-        ax.set_ylim(14, 26)
-        ax.set_xlim(xx[1], xx[-1])
-        #ax.semilogy()
-        if i != 4:
-            ax.set_xticklabels([])
+    if axes is None:
+        if utc:
+            date_format = mdates.DateFormatter('%H:%M')
+            ax.xaxis.set_major_formatter(date_format)
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            #ax.xaxis.set_minor_locator(mdates.MinuteLocator(interval=10))
+            ax.set_xlabel(xlabel)
         else:
             ax.set_xlabel('Time [hr]')
-        if j != 0:
-            ax.set_yticklabels([])
-        else:
-            ax.set_ylabel(r'$T$ K')
+        ax.set_xlim(xx.min(), xx.max())
+        ax.set_ylim(-3, 3)
+        #ax.set_xlabel('Time [hr]')
+        ax.set_ylabel('Baseline [K]')
+        
+        if output_name is not None:
+            fig.savefig(output_name, formate='png', dpi=200)
+
+        plt.show()
+#def plot_baseline(baseline_file):
+#    
+#    with h5.File(baseline_file, 'r') as f:
+#        baseline = f['baseline'][:]
+#        time = f['time'][:]
+#
+#    print baseline.shape
+#    
+#    fig, axes = axes_utils.setup_axes(5, 4, colorbar=False)
+#    
+#    for bi in range(19):
+#        
+#        i = bi / 4
+#        j = bi % 4
+#        
+#        xx = time - time[0]
+#        xx /= 3600.
+#        
+#        ax = axes[bi]
+#        
+#        ax.plot(xx, baseline[:, 0, bi], 'r-', lw=1)
+#        ax.plot(xx, baseline[:, 1, bi], 'b-', lw=1)
+#        
+#        ax.text(0.04, 0.8, 'Feed %02d'%bi, transform=ax.transAxes,
+#                bbox=dict(facecolor='w', alpha=0.5, ec='none'))
+#        ax.set_ylim(14, 26)
+#        ax.set_xlim(xx[1], xx[-1])
+#        #ax.semilogy()
+#        if i != 4:
+#            ax.set_xticklabels([])
+#        else:
+#            ax.set_xlabel('Time [hr]')
+#        if j != 0:
+#            ax.set_yticklabels([])
+#        else:
+#            ax.set_ylabel(r'$T$ K')
 
 def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None, ymin=None, ymax=None):
     

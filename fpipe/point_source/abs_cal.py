@@ -266,7 +266,7 @@ def iter_beam_list(result_path, key_list, beam_list,
             yield beam, result_name
 
 
-def average_eta(result_path, key_list_dict, beam_list,
+def load_eta(result_path, key_list_dict, beam_list,
                 band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
                 tnoise_model=None):
 
@@ -311,7 +311,7 @@ def iter_avg_eta(result_path, key_list_dict, beam_list,
                 band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
                 tnoise_model=None, pol=0):
 
-    eta, f = average_eta(result_path, key_list_dict, beam_list, band_list, tnoise_model)
+    eta, f = load_eta(result_path, key_list_dict, beam_list, band_list, tnoise_model)
     eta_avg = np.ma.median(eta, axis=0)
     for bi in range(19):
         xx = np.linspace(0, 1, f.shape[0]) #freq[~eta.mask]
@@ -321,4 +321,72 @@ def iter_avg_eta(result_path, key_list_dict, beam_list,
         #yy = np.ma.array(eta_poly(freq), mask=eta.mask)
         yy = np.ma.array(eta_poly(xx), mask=False)
         yield bi, f, yy
+
+def iter_fit_eta_days(result_path, key_list_dict, beam_list,
+        band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
+        tnoise_model=None, pol=0):
+
+    eta, f = load_eta(result_path, key_list_dict, beam_list, band_list, tnoise_model)
+    eta_avg = np.ma.median(eta, axis=0)
+    eta_model = []
+    xx = np.linspace(0, 1, f.shape[0]) #freq[~eta.mask]
+    for bi in range(19):
+        #xx = np.linspace(0, 1, f.shape[0]) #freq[~eta.mask]
+        msk = eta_avg[bi, :, pol].mask
+        yy = eta_avg[bi, :, pol][~msk]
+        eta_poly = np.poly1d(np.polyfit(xx[~msk], yy, 15))
+        #yy = np.ma.array(eta_poly(freq), mask=eta.mask)
+        yy = np.ma.array(eta_poly(xx), mask=False)
+        eta_model.append(yy)
+        #yield bi, f, yy
+
+    #for ii in range(eta.shape[0]):
+    for ii, key in enumerate(key_list_dict.keys()):
+        for bi in range(19):
+            _eta = eta[ii, bi, :, pol]
+            _msk = eta[ii, bi, :, pol].mask
+
+            yy = (_eta - eta_model[bi])[~_msk]
+            eta_poly = np.poly1d(np.polyfit(xx[~_msk], yy, 3))
+            yy = np.ma.array(eta_poly(xx), mask=False)
+
+            yield ii, key, bi, f, yy + eta_model[bi]
+
+def output_fit_eta(result_path, key_list_dict, output_path, beam_list,
+        band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
+        tnoise_model=None):
+
+    eta_xx = []
+    for ii, key, bi, eta_f, eta in iter_fit_eta_days(result_path, key_list_dict, beam_list, 
+            band_list, tnoise_model, 0):
+        eta_xx.append(eta)
+    eta_xx = np.array(eta_xx)
+    eta_xx.shape = (len(key_list_dict.keys()), 19, -1)
+            
+
+    eta_yy = []
+    for ii, key, bi, eta_f, eta in iter_fit_eta_days(result_path, key_list_dict, beam_list, 
+            band_list, tnoise_model, 1):
+        eta_yy.append(eta)
+    eta_yy = np.array(eta_yy)
+    eta_yy.shape = (len(key_list_dict.keys()), 19, -1)
+
+
+    eta = np.concatenate([eta_xx[:, :, None, :], eta_yy[:, :, None, :]], axis=2)
+
+    for ii, key in enumerate(key_list_dict):
+        with  h5.File(output_path + 'eta_%s.h5'%key, 'w') as f:
+            f['eta'] = eta[ii]
+            f['eta_f'] = eta_f
+
+
+
+
+
+
+
+
+
+
+
 

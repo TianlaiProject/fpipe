@@ -3,9 +3,15 @@
 
 from fpipe.map import dirtymap_hp, cleanmap
 import os
+import numpy as np
 
 field_id = int(os.getenv('FIELD_ID'))
 suffix = os.getenv('BAND')
+map_id = int(os.getenv('MAPID'))
+#file_st = int(os.getenv('FILE0'))
+#file_ed = int(os.getenv('FILE1'))
+file_st = map_id + 1
+file_ed = file_st
 
 data_base = '/scratch/users/ycli/fanalysis/'
 
@@ -16,24 +22,31 @@ pipe_copy = False
 pipe_feedback = 0
 
 DATA_list = [
-    ['HIMGS_1100+2600', '20210302'],
-    ['HIMGS_1100+2632', '20210305'],
-    ['HIMGS_1100+2643', '20210306'],
-    ['HIMGS_1100+2654', '20210307'],
-    ['HIMGS_1100+2610', '20210309'],
-    ['HIMGS_1100+2621', '20210313'],
+    ['HIMGS_1100+2600', '20210302', [ 6, ]],
+    ['HIMGS_1100+2632', '20210305', [10, ]],
+    ['HIMGS_1100+2643', '20210306', [ 6, 10]],
+    ['HIMGS_1100+2654', '20210307', [ 6, 10]],
+    ['HIMGS_1100+2610', '20210309', [ 9, 10]],
+    ['HIMGS_1100+2621', '20210313', []],
+    ['HIMGS_1100+2610', '20210314', [10, 17]],
 ]
 
-DATA, DATE = DATA_list[field_id]
+DATA, DATE, bad_feed = DATA_list[field_id]
 
 #suffix = '_1050-1150MHz'
 
-map_prefix = 'map_9hr'
-ra_st =  9.*15 - 0.5
-ra_ed = 10.*15 + 0.5
+ra_list = np.linspace(9, 13, 8)
 
-file_st = 1
-file_ed = file_st + 2
+map_prefix = 'map_%02d'%map_id
+ra_st = ra_list[map_id] * 15 - 0.5
+ra_ed = ra_list[map_id+1] * 15 + 0.5
+
+#file_st = 1
+#file_ed = file_st + 2
+
+feed_select = range(1, 20)
+for x in bad_feed:
+    feed_select.remove(x)
 
 file_temp = '%s/%s_arcdrift%04d-%04d%s.h5'
 input_files = [file_temp%(DATE, DATA, i, i, suffix)
@@ -44,16 +57,18 @@ pipe_tasks.append(cleanmap.CleanMap)
 
 #dmh_input_files = ['rb64_rmbsl/%s'%f for f in input_files]
 #dmh_output_files = ['%s/dm_%s%s'%(map_prefix, DATA, suffix), ]
-dmh_input_files = ['rb64_etaA/%s'%f for f in input_files]
-dmh_output_files = ['%s_etaA/dm_%s%s'%(map_prefix, DATA, suffix), ]
+dmh_input_files = ['rb64_rmbsl_sumfeeds/%s'%f for f in input_files]
+dmh_output_files = ['%s_sumfeeds_rmbb/dm_%s_%s%s'%(map_prefix, DATA, DATE, suffix), ]
 dmh_nside = 2048
 dmh_freq_select = (0, None)
+#dmh_freq_select = (150, None)
+dmh_feed_select = feed_select
 dmh_ra_range = [ra_st, ra_ed]
 dmh_dec_range = [25.5, 27.5]
 dmh_diag_cov = True
 dmh_tblock_len = 1800
 dmh_baseline_file = None
 
-cm_input_files = ['%s_etaA/dm_%s%s_vis.h5'%(map_prefix, DATA, suffix), ]
-cm_output_files  = ['%s_etaA/cm_%s%s_vis.h5'%(map_prefix, DATA, suffix), ]
+cm_input_files = ['%s_sumfeeds_rmbb/dm_%s_%s%s_vis.h5'%(map_prefix, DATA, DATE, suffix), ]
+cm_output_files  = ['%s_sumfeeds_rmbb/cm_%s_%s%s_vis.h5'%(map_prefix, DATA, DATE, suffix), ]
 cm_healpix = True

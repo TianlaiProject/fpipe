@@ -164,10 +164,10 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
             bsl = np.ones_like(vis)
 
         logger.debug('est. var %d %d'%(n_time, tblock_len))
-        _vis = np.ma.array(vis.copy())
-        _vis.mask = vis_mask
-        median = np.ma.median(_vis, axis=0)
-        vis -= median[None, ...]
+        #_vis = np.ma.array(vis.copy())
+        #_vis.mask = vis_mask
+        #median = np.ma.median(_vis, axis=0)
+        #vis -= median[None, ...]
         if self.params['noise_weight']:
             for st in range(0, n_time, tblock_len):
                 et = st + tblock_len
@@ -180,7 +180,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
 
                 _vis = vis[st:et,...]
                 _vis = np.ma.array(_vis, mask = _vis_mask)
-                vis[st:et,...] -= np.ma.median(_vis, axis=0)
+                #vis[st:et,...] -= np.ma.median(_vis, axis=0)
                 _vis[_vis_mask] = 0.
 
                 # rm bright sources for var est.

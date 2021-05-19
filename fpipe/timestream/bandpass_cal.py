@@ -146,6 +146,10 @@ class Apply_EtaA(timestream_task.TimestreamTask):
         show_progress = self.params['show_progress']
         progress_step = self.params['progress_step']
 
+        with h5.File(self.params['eta_A'], 'r') as f:
+            self.eta = f['eta'][:]
+            self.eta_f = f['eta_f'][:]
+
 
         func = ts.bl_data_operate
         func(self.cal_etaA, full_data=True, copy_data=False, 
@@ -156,11 +160,16 @@ class Apply_EtaA(timestream_task.TimestreamTask):
 
     def cal_etaA(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
 
-        eta_A = self.params['eta_A']
-        if eta_A is not None:
-            print 'eta A cal'
-            #factor = np.pi ** 2. / 4. / np.log(2.)
-            vis /= eta_A[gi] #* factor
+        #eta_A = self.params['eta_A']
+        #if eta_A is not None:
+        #    print 'eta A cal'
+        #    #factor = np.pi ** 2. / 4. / np.log(2.)
+        #    vis /= eta_A[gi] #* factor
+
+        bi = bl[0] - 1
+        _eta = interp1d(self.eta_f, self.eta[bi], axis=-1)(ts.freq)
+        _eta = _eta.T
+        vis /= _eta[None, :, :]
 
 
 def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_path,
@@ -257,9 +266,10 @@ def ND_statics(file_list, gi=0, on_t=1):
     on = ts['ns_on'][:, gi].local_array
     on = on.astype('bool')
 
-    vis = np.ma.array(vis, mask=vis_mask)
+    vis = np.ma.array(vis, mask=vis_mask.copy())
 
     vis.mask[~on, ...] = True
+    vis.mask[on, ...] = False
 
     vis, on = get_Ncal(vis, vis_mask, on, on_t)
 
@@ -337,7 +347,8 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None,
 
     return nd, time, freq
 
-def output_gtgnu(file_list, output_name, smooth=(7, 51), Tnoise_file='', 
+#def output_gtgnu(file_list, output_name, smooth=(7, 51), Tnoise_file='', 
+def output_gtgnu(file_list, output_name, smooth=(1, 1), Tnoise_file='', 
         interp_mask=True):
 
     nd_list = []
@@ -380,17 +391,20 @@ def get_Ncal(vis, vis_mask, on, on_t, off_t=1, cut_end=True):
         vis1_on  = vis[on, ...].data
         vis1_off = vis[off, ...].data
         # because the nearby time are masked, we use futher ones.
-        mask_off = np.zeros_like(on, dtype='bool')
-        for i in range(off_t):
-            mask_off += np.roll(on, i+1) + np.roll(on, -i-1)
-        mask     = vis_mask[mask_off, ...]
+        #mask_off = np.zeros_like(on, dtype='bool')
+        #for i in range(off_t):
+        #    mask_off += np.roll(on, i+1) + np.roll(on, -i-1)
+        #mask     = vis_mask[mask_off, ...]
+        mask_off = vis_mask[off, ...]
+        mask_on  = vis_mask[on,  ...]
 
         vis_shp = vis1_off.shape
         vis1_off = vis1_off.reshape( (-1, 2 * off_t) + vis_shp[1:] )
         vis1_off = np.ma.mean(vis1_off, axis=1)
 
-        mask    = mask.reshape((-1, 2 * off_t) + vis_shp[1:])
-        mask    = np.sum(mask, axis=1).astype('bool')
+        mask_off  = mask_off.reshape((-1, 2 * off_t) + vis_shp[1:])
+        mask_off  = np.sum(mask_off, axis=1).astype('bool')
+        mask = mask_on + mask_off
     else:
         raise
     

@@ -125,7 +125,8 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
 
     fig.clf()
 
-def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None, diff=False):
+def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None, 
+        diff=False, freq_sel=(0, None)):
 
     fig = plt.figure(figsize=(12, 4))
     ax  = fig.add_axes([0.07, 0.15, 0.84, 0.80])
@@ -138,23 +139,23 @@ def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None, di
     ymax = -1.e10
     for tblock in file_list:
         for fblock in tblock:
-            print fblock
+            #print fblock
             ts = FAST_Timestream(fblock)
             ts.load_all()
 
             try:
-                vis = ts['vis'][:, :, pi, bi].local_array
-                vis_mask = ts['vis_mask'][:, :, pi, bi].local_array
+                vis = ts['vis'][:, slice(*freq_sel), pi, bi].local_array
+                vis_mask = ts['vis_mask'][:, slice(*freq_sel), pi, bi].local_array
                 on = ts['ns_on'][:, bi].local_array
                 time = ts['sec1970'][:].local_array
             except AttributeError:
-                vis = ts['vis'][:, :, pi, bi]
-                vis_mask = ts['vis_mask'][:, :, pi, bi]
+                vis = ts['vis'][:, slice(*freq_sel), pi, bi]
+                vis_mask = ts['vis_mask'][:, slice(*freq_sel), pi, bi]
                 on = ts['ns_on'][:, bi]
                 time = ts['sec1970'][:]
 
             on = on.astype('bool')
-            freq = ts['freq'][:] * 1.e-3
+            freq = ts['freq'][slice(*freq_sel)] * 1.e-3
 
             if diff:
                 vis = vis[:, 1:] - vis[:, :-1]
@@ -196,6 +197,7 @@ def plot_wf_onefeed(file_list, bi=0, pi=0, vmin=None, vmax=None, output=None, di
 
     if output is not None:
         fig.savefig(output, dpi=200)
+    plt.show()
     fig.clf()
 
 class PlotMeerKAT(timestream_task.TimestreamTask):
