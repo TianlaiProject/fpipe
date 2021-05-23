@@ -137,8 +137,9 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
             vis = np.abs(vis)
 
         time = ts['sec1970'][:]
-        tblock_len = 1000
+        tblock_len = 2000
         n_time, n_pol, n_bl = vis.shape
+        #tblock_len = n_time
         ff = gi[0]
         vis_idx = ((bb, pp, ff) for bb in range(n_bl) for pp in range(n_pol))
         vis_axis_names = ('bl', 'pol', 'freq')
