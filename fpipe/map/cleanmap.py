@@ -169,6 +169,67 @@ def make_cleanmap(dirty_map, cov_inv_block, diag_cov=False, threshold=1.e-5):
 
     return clean_map, noise_diag
 
+def combine_maps(map_path, map_name_list, ra_range, dec_range, output_name=None):
+
+    ra_min, ra_max   = ra_range
+    dec_min, dec_max = dec_range
+
+    full_map_pix = None
+    full_map = None
+    full_wet = None
+    #mask = None
+
+    v1 = hp.ang2vec(np.pi/2 - np.radians(dec_min), np.radians(ra_min))
+    v2 = hp.ang2vec(np.pi/2 - np.radians(dec_min), np.radians(ra_max))
+    v3 = hp.ang2vec(np.pi/2 - np.radians(dec_max), np.radians(ra_max))
+    v4 = hp.ang2vec(np.pi/2 - np.radians(dec_max), np.radians(ra_min))
+
+    for map_name in map_name_list:
+        with h5py.File(map_path + map_name, 'r') as f:
+            #print f.keys()
+            #imap = f['clean_map'][:]
+            #nmap = f['noise_diag'][:]
+            imap = al.load_h5(f, 'clean_map')
+            axis_names = imap.info['axes']
+            imap_info = imap.info
+            imap = al.make_vect(imap, axis_names = axis_names)
+            nmap = al.load_h5(f, 'noise_diag')
+            nside = f['nside'][()]
+            pix  = f['map_pix'][:]
+            #if mask is None:
+            #    mask  = f['mask'][:]
+            #else:
+            #    mask += f['mask'][:]
+        if full_map_pix is None:
+            full_map_pix = hp.query_polygon(nside, np.array([v1, v2, v3, v4]))
+            full_map = np.zeros(imap.shape[:1] + full_map_pix.shape )
+            full_wet = np.zeros(imap.shape[:1] + full_map_pix.shape )
+        _idx = np.searchsorted(full_map_pix, pix)
+        good = (_idx < full_map_pix.shape[0]) * (_idx >=0)
+        nmap[nmap==0] = np.inf
+
+        full_map[:, _idx[good]] += imap[:, good] / nmap[:, good]
+        full_wet[:, _idx[good]] += 1./nmap[:, good]
+
+    full_wet[full_wet==0] = np.inf
+    full_map /= full_wet
+    full_wet[np.isinf(full_wet)] = 0.
+
+    if output_name is not None:
+        full_map = al.make_vect(full_map, axis_names=axis_names)
+        full_map.info = imap_info
+        full_wet = al.make_vect(full_wet, axis_names=axis_names)
+        full_wet.info = imap_info
+        with h5py.File(output_name, 'w') as f:
+            al.save_h5(f, 'clean_map', full_map)
+            al.save_h5(f, 'noise_diag', full_wet)
+            #f['clean_map'] = full_map
+            #f['noise_diag'] = full_wet
+            f['nside'] = nside
+            f['map_pix'] = full_map_pix
+
+    return full_map, full_map_pix, nside
+
 def make_cleanmap_old(dirty_map, cov_inv_block, threshold=1.e-5):
 
     map_shp = dirty_map.shape

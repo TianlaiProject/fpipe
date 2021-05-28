@@ -32,9 +32,14 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
 
         for map_name in map_list:
 
-            freq, spec, p_ra, p_dec \
-                    = source.get_map_spec(map_name, 'clean_map', _s[3], _s[4], 
-                            beam_size=3./60.)
+            _r = source.get_map_spec(map_name, 'clean_map', _s[3], _s[4], 
+                    beam_size=beam_size)
+            if _r is not None:
+                freq, spec, p_ra, p_dec = _r
+            else:
+                plt.close()
+                plt.clf()
+                continue
             spec = np.ma.masked_equal(spec, 0)
             if np.all(spec.mask) or spec.shape[1] == 0:
                 plt.close()
@@ -47,9 +52,13 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
             xx_min = min(xx_min, freq.min())
             xx_max = max(xx_max, freq.max())
 
-        beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
-        _w = np.exp(-0.5*(((p_ra - _s[3])*np.cos(np.radians(p_dec)))**2 \
-                + (p_dec - _s[4])**2)/beam_sig **2 )
+        #if beam_size is not None:
+        #    beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
+        #    _w = np.exp(-0.5*(((p_ra - _s[3])*np.cos(np.radians(p_dec)))**2 \
+        #            + (p_dec - _s[4])**2)/beam_sig **2 )
+        #else:
+        #    _w = 1.
+        _w = 1.
         ax1.plot(_s[0], _s[1]*_w, 'k--')
         ax1.errorbar(_s[5][:, 0], _s[5][:, 1], _s[5][:, 2], fmt='go')
 
@@ -75,7 +84,7 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
                 #map_key='noise_diag',
                 pix=0.5/60., indx=(slice(0, None), ), imap_shp = (50, 50),
                 field_center=[(_s[3], _s[4]),], figsize=(6, 3), 
-                vmin=vmin, vmax=vmax, sigma = None,
+                vmin=vmin, vmax=vmax, sigma = 10,
                 title='', proj='ZEA', cmap='Blues',
                 axes = (fig, [0.65, 0.13, 0.27, 0.8], cax),
                 verbose=False)[1][0]

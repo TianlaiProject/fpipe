@@ -22,6 +22,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         'nside' : 1024,
         'ra_range' : [130, 135],
         'dec_range' : [26.0, 27.0],
+        'center_only' : False, 
     }
     
     prefix = 'dmh_'
@@ -208,7 +209,9 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
                                _ci, _dm,
                                diag_cov = self.params['diag_cov'],
                                beam_size= beam_fwhm,
-                               beam_cut = self.params['beam_cut'])
+                               #beam_cut = self.params['beam_cut'],
+                               center_only = self.params['center_only'],
+                               )
             del _vis, _vis_mask
             gc.collect()
 
@@ -225,7 +228,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         
 def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis, nside,
                    ra_range, dec_range, cov_inv_block, dirty_map, diag_cov=False,
-                   beam_size=3./60.,  beam_cut = 0.01, center_only=False): 
+                   beam_size=3./60.,  center_only=False): 
     
     map_shp = pix_axis.shape
     

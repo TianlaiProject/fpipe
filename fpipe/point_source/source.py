@@ -40,9 +40,15 @@ def get_map_spec(map_name, map_key, ra, dec, beam_size=3./60.):
         where = (pixs - _p) == 0
         if np.any(where):
             spec_on = imap[:, where]
-            _p = hp.ang2pix(nside, ra+8./60., dec, lonlat=True)
-            where = (pixs - _p) == 0
-            spec_off = imap[:, where]
+            # sum all neighbours
+            for _p in hp.get_all_neighbours(nside, ra, dec, lonlat=True):
+                where = (pixs - _p == 0)
+                if np.any(where):
+                    spec_on += imap[:, where]
+            #_p = hp.ang2pix(nside, ra+8./60., dec, lonlat=True)
+            #where = (pixs - _p) == 0
+            #spec_off = imap[:, where]
+            spec_off = 0.
             return freq, spec_on - spec_off, p_ra, p_dec
 
     else:
