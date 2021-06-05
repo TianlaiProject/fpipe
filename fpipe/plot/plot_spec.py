@@ -16,7 +16,7 @@ import h5py as h5
 def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100, 
         output_path=None, beam_size=3./60., plot_hit=False, hitmap=None):
 
-    for _s in source.get_pointsource_spec(nvss_path, nvss_range, threshold):
+    for _s in source.get_pointsource_spec(nvss_path, nvss_range, threshold, mJy=True):
 
         fig = plt.figure(figsize=(12, 4))
         ax1 = fig.add_axes([0.06, 0.13, 0.52, 0.8])
@@ -33,7 +33,7 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
         for map_name in map_list:
 
             _r = source.get_map_spec(map_name, 'clean_map', _s[3], _s[4], 
-                    beam_size=beam_size)
+                    beam_size=beam_size, mJy=True)
             if _r is not None:
                 freq, spec, p_ra, p_dec = _r
             else:
@@ -45,7 +45,7 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
                 plt.close()
                 plt.clf()
                 continue
-            ax1.plot(freq, spec, '.-', ms=5, mfc='none')
+            ax1.plot(freq, spec, 'r.-', ms=5, mfc='none')
 
             ymax = max(ymax, np.ma.median(spec) * 1.5)
 
@@ -63,7 +63,8 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
         ax1.errorbar(_s[5][:, 0], _s[5][:, 1], _s[5][:, 2], fmt='go')
 
 
-        ax1.set_ylabel(r'$T$ K')
+        #ax1.set_ylabel(r'$T$ K')
+        ax1.set_ylabel(r'Flux mJy')
         ax1.set_xlabel('Frequency MHz')
         ax1.set_xlim(xmin=xx_min, xmax=xx_max)
         ax1.text(0.03, 0.1, '%s'%_s[2], transform=ax1.transAxes)

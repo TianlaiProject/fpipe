@@ -257,14 +257,14 @@ def _plot_map_hp(imap, pixs, nside, imap_shp = (600, 360),
                 field_center[1] - imap_shp[1] * 0.5 * pix, 
                 field_center[1] + imap_shp[1] * 0.5 * pix, 
                 ]
-        plot_nvss(nvss_path, [nvss_range,], (fig, ax), ms=5, mew=0.2)
+        plot_nvss(nvss_path, [nvss_range,], (fig, ax), ms=10, mew=2.0)
 
     if cbar:
         return fig, ax, cax
     else:
         return fig, ax
 
-def plot_nvss(nvss_path, nvss_range, axes, threshold=10., ms=10, mew=1,):
+def plot_nvss(nvss_path, nvss_range, axes, threshold=300., ms=10, mew=1,):
 
     fig, ax = axes
 
@@ -272,7 +272,7 @@ def plot_nvss(nvss_path, nvss_range, axes, threshold=10., ms=10, mew=1,):
     nvss_sel = nvss_cat['FLUX_20_CM'] > threshold
     nvss_ra  = nvss_cat['RA'][nvss_sel]
     nvss_dec = nvss_cat['DEC'][nvss_sel]
-    ax.plot(nvss_ra, nvss_dec, 'o', mec='0.5', mfc='none', ms=ms, mew=mew,
+    ax.plot(nvss_ra, nvss_dec, 'o', mec='k', mfc='none', ms=ms, mew=mew,
             transform=ax.get_transform('icrs'))
 
 

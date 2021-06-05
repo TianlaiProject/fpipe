@@ -266,8 +266,6 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis, nside,
         pix = np.concatenate(pix, axis=0)
         pix_ra, pix_dec = hp.pix2ang(nside, pix, lonlat=True)
         w = np.sqrt((pix_ra - ra[None, :]) ** 2 + (pix_dec - dec[None, :]) ** 2)
-        #w[w<1.e-5] = 1.e-5
-        #w = 1. / w
         w = 1. - w / pix_size
         w[w<0] = 0.
         w = w ** 2.
