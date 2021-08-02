@@ -133,7 +133,10 @@ def make_cleanmap(dirty_map, cov_inv_block, diag_cov=False, threshold=1.e-5):
     dirty_map.shape = (np.prod(map_shp), )
     if diag_cov:
         cov_inv_block.shape = (np.prod(map_shp), )
-        cov_inv_block[cov_inv_block<threshold] = np.inf
+        #cov_inv_block[cov_inv_block<threshold] = np.inf
+        bad = cov_inv_block==0
+        cov_inv_block += threshold        
+        cov_inv_block[bad] = np.inf
         noise_diag = 1./cov_inv_block
         clean_map = dirty_map.copy() / cov_inv_block
     else:

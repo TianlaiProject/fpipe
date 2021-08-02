@@ -12,6 +12,9 @@ import matplotlib.gridspec as gridspec
 
 from openpyxl import load_workbook
 
+#from scipy.ndimage import median_filter
+from scipy.signal import wiener
+
 _Lon = (106. + 51./60. + 24.0/3600.) * u.deg
 _Lat = (25. + 39./60. + 10.6/3600.) * u.deg
 _Location = EarthLocation.from_geodetic(_Lon, _Lat)

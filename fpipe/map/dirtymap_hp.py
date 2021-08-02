@@ -273,11 +273,19 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
         pix = [pix[None, :], hp.get_all_neighbours(nside, ra, dec, lonlat=True)]
         pix = np.concatenate(pix, axis=0)
         pix_ra, pix_dec = hp.pix2ang(nside, pix, lonlat=True)
+
+        # GBT weighting
+        #w = np.sqrt((pix_ra - ra[None, :]) ** 2 + (pix_dec - dec[None, :]) ** 2)
+        #w = 1. - w / pix_size
+        #w[w<0] = 0.
+        #w = w ** 2.
+        #w = w / np.sum(w, axis=0)[None, :]
+
         w = np.sqrt((pix_ra - ra[None, :]) ** 2 + (pix_dec - dec[None, :]) ** 2)
-        w = 1. - w / pix_size
-        w[w<0] = 0.
-        w = w ** 2.
-        w = w / np.sum(w, axis=0)[None, :]
+        w = np.exp(-0.5 * (w ** 2) / beam_sig**2 )
+        w[w<0.001] = 0.
+        w = w / np.max(w, axis=0)[None, :]
+
         P = np.zeros(ra.shape + pix_axis.shape, dtype=__dtype__ )
         for ii in range(9):
             on = (pix_axis - pix[ii][:, None]) == 0
@@ -296,7 +304,7 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
     logger.debug('est. noise inv')
     if diag_cov:
         #cov_inv_block += np.diag(multi_dot([P.T, weight, P]))
-        cov_inv_block += np.dot(P.T, weight)
+        cov_inv_block += np.dot(P.T**2., weight)
     else:
         weight = np.eye(vis_one.shape[0]) * weight
         cov_inv_block += multi_dot([P.T, weight, P])
@@ -362,7 +370,7 @@ def timestream2map_deconv(vis_one, vis_mask, vis_var, time, ra, dec,
     logger.debug('est. noise inv')
     if diag_cov:
         #cov_inv_block += np.diag(multi_dot([P.T, weight, P]))
-        cov_inv_block += np.dot(P.T, weight)
+        cov_inv_block += np.dot(P.T**2, weight)
     else:
         weight = np.eye(vis_one.shape[0]) * weight
         cov_inv_block += multi_dot([P.T, weight, P])

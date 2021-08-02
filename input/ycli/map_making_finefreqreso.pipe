@@ -12,7 +12,8 @@ file_st = map_id + 1
 file_ed = file_st
 
 #data_base = '/project/ycli/fanalysis/'
-data_base = '/home/ycli/fanalysis/'
+#data_base = '/home/ycli/fanalysis/'
+data_base = '/scratch3/users/ycli/fanalysis/'
 
 DATA_Key = os.getenv('DATAKey')
 DATA     = DB[DATA_Key]['DATA']
@@ -29,9 +30,9 @@ pipe_timing = True
 ra_list = np.linspace(9, 13, 8)
 
 #map_prefix = 'map_%02d'%map_id
-map_prefix = 'map_df7k_sumfeeds'
-ra_st = ra_list[map_id] * 15 - 0.5
-ra_ed = ra_list[map_id+1] * 15 + 0.5
+map_prefix = 'map_df28k_sumfeeds_CC_centeronly'
+ra_st = ra_list[map_id] * 15 - 0.3
+ra_ed = ra_list[map_id+1] * 15 + 0.3
 
 feed_select = range(1, 20)
 for x in bad_feed:
@@ -46,9 +47,13 @@ pipe_tasks.append(cleanmap.CleanMap)
 
 #dmh_input_files = ['rb64_rmbsl/%s'%f for f in input_files]
 #dmh_output_files = ['%s/dm_%s%s'%(map_prefix, DATA, suffix), ]
-dmh_input_files = ['rmbsl_sumfeeds/%s'%f for f in input_files]
+#dmh_input_files = ['rmbsl_sumfeeds/%s'%f for f in input_files]
+#dmh_input_files = ['rb4_sumfeeds/%s'%f for f in input_files]
+#dmh_input_files = ['rb4_sumfeeds_CorrectCoord/%s'%f for f in input_files]
+#dmh_input_files = ['rb4_rmbsl_sumfeeds/%s'%f for f in input_files]
+dmh_input_files = ['rb4_rmbsl_sumfeeds_CC/%s'%f for f in input_files]
 dmh_output_files = ['%s/dm_%02d_%s_%s%s'%(map_prefix, map_id, DATA, DATE, suffix), ]
-dmh_nside = 1024 #2048
+dmh_nside = 2048
 dmh_freq_select = (0, None)
 #dmh_freq_select = (1000, 1010)
 dmh_feed_select = feed_select
@@ -57,6 +62,8 @@ dmh_dec_range = [25.5, 27.5]
 dmh_diag_cov = True
 dmh_tblock_len = 1800
 dmh_baseline_file = None
+dmh_save_localHI = True
+dmh_center_only = True
 
 cm_input_files = ['%s/dm_%02d_%s_%s%s_vis.h5'%(map_prefix, map_id, DATA, DATE, suffix), ]
 cm_output_files  = ['%s/cm_%02d_%s_%s%s_vis.h5'%(map_prefix, map_id, DATA, DATE, suffix), ]

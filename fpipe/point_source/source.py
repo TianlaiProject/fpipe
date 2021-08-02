@@ -20,90 +20,169 @@ from scipy.interpolate import NearestNDInterpolator
 import os
 _dir_ = os.path.dirname(__file__)
 
-def get_map_spec(map_name, map_key, ra, dec, beam_size=3./60., mJy=False):
+def get_map_spec(imap_info, ra, dec, beam_size=3./60., mJy=False):
 
-    with h5.File(map_name, 'r') as f:
-        #print 'Load maps from %s'%map_name
-        #print f.keys()
-        #imap = f[map_key][indx]
-        imap = al.load_h5(f, map_key)
-        imap = al.make_vect(imap, axis_names = imap.info['axes'])
-
-        #imap = f['dirty_map'][:]
-        pixs = f['map_pix'][:]
-        nside = f['nside'][()]
-
+    imap, pixs, nside, nmap = imap_info
     freq = imap.get_axis('freq')
 
-    if beam_size is None:
-        _p = hp.ang2pix(nside, ra, dec, lonlat=True)
-        p_ra, p_dec = hp.pix2ang(nside, _p, lonlat=True)
-        where = (pixs - _p) == 0
-        if np.any(where):
-            spec_on = imap[:, where]
-            # sum all neighbours
-            ii = 1.
-            for _p in hp.get_all_neighbours(nside, ra, dec, lonlat=True):
-                where = (pixs - _p == 0)
-                if np.any(where):
-                    ii += 1.
-                    spec_on += imap[:, where]
-            #_p = hp.ang2pix(nside, ra+8./60., dec, lonlat=True)
-            #where = (pixs - _p) == 0
-            #spec_off = imap[:, where]
-            spec_off = 0.
+    data = np.loadtxt(_dir_ + '/../data/fwhm.dat')
+    f = data[4:, 0] #* 1.e-3
+    d = data[4:, 1:]
+    fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")(freq)
+    fwhm /= 60.
 
-            #spec_on /= ii
+    #beam_size = np.max(fwhm)
+    #beam_sig = (fwhm / (2. * np.sqrt(2.*np.log(2.))))[None, :]
+    pix_size = hp.nside2resol(nside, arcmin=True) / 60.
 
-            spec = spec_on - spec_off
-            if mJy:
-                spec = spec / mJy2K(freq*1.e-3)[:, None]
-            return freq, spec, p_ra, p_dec
+    data = np.loadtxt(_dir_ + '/../data/fwhm.dat')
+    f = data[4:, 0] #* 1.e-3
+    d = data[4:, 1:]
+    fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")(freq)
+    fwhm /= 60.
+    #fwhm = 3./60. * 1420 / freq
 
-    else:
-        #beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
+    beam_size = np.min(fwhm)
+    beam_sig = (fwhm / (2. * np.sqrt(2.*np.log(2.))))[None, :]
 
-        data = np.loadtxt(_dir_ + '/../data/fwhm.dat')
-        f = data[4:, 0] #* 1.e-3
-        d = data[4:, 1:]
-        fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")(freq)
-        fwhm /= 60.
+    # spec on
+    _v = hp.ang2vec(ra, dec, lonlat=True)
+    p_ra, p_dec = hp.pix2ang(nside, 
+            hp.ang2pix(nside, ra, dec, lonlat=True), lonlat=True)
+    #_p = hp.query_disc(nside, _v, np.radians(0.5 * beam_size), inclusive=True)
+    _p  = hp.get_all_neighbours(nside, ra, dec, lonlat=True)
+    _p = np.append(_p, hp.ang2pix(nside, ra, dec, lonlat=True))
+    _w = hp.pix2ang(nside, _p, lonlat=True)
+    _w = np.exp( - 0.5*((_w[0] - ra)**2 + (_w[1] - dec)**2 )[:, None] / beam_sig **2)
+    _w /= np.max(_w, axis=0)[None, :]
 
-        beam_size = np.max(fwhm)
-        beam_sig = (fwhm * (2. * np.sqrt(2.*np.log(2.))))[None, :]
+    spec = []
+    noise = [] # it is noise inv
+    for i in range(_p.shape[0]):
+        #spec.append( imap[:, (pixs - _p[i]) == 0][None, :] / _w[i] )
+        if np.any((pixs - _p[i]) == 0) :
+            spec.append(  imap[:, (pixs - _p[i]) == 0][None, :])
+            noise.append( nmap[:, (pixs - _p[i]) == 0][None, :])
+        else:
+            _w[i] = 0.
+    if len(spec) == 0: return None
+    spec = np.concatenate(spec, axis=0)
+    spec = np.ma.masked_equal(spec, 0)
+    #_w[spec.mask[:, :, 0]] = 0.
+    spec = np.ma.sum(spec, axis=0) / np.sum(_w, axis=0)[:, None]
+    #spec = np.ma.sum(spec, axis=0) / np.sum(_w)
 
-        # spec on
-        _v = hp.ang2vec(ra, dec, lonlat=True)
-        _p = hp.query_disc(nside, _v, np.radians(1.0 * beam_size))
-        _w = hp.pix2ang(nside, _p, lonlat=True)
-        _w = np.exp( - 0.5 * ( (_w[0] - ra)**2 + (_w[1] - dec)**2 )[:, None] / beam_sig **2 )
-        spec = []
-        for i in range(_p.shape[0]):
-            spec.append( imap[:, (pixs - _p[i]) == 0][None, :] / _w[i])
-        spec = np.concatenate(spec, axis=0)
-        spec = np.ma.masked_equal(spec, 0)
-        spec = np.ma.mean(spec, axis=0)
+    noise = np.concatenate(noise, axis=0)
+    noise = np.ma.masked_equal(noise, 0)
+    noise = np.ma.sum(noise, axis=0) / np.sum(_w, axis=0)[:, None]
+    # convert to noise error
+    noise = np.sqrt(noise)
+    noise[noise==0] = np.inf
+    noise = 1./noise
 
-        # spec off
-        ra_off = ra+8./60.
-        _v = hp.ang2vec(ra_off, dec, lonlat=True)
-        _p = hp.query_disc(nside, _v, np.radians(0.5 * beam_size))
-        _w = hp.pix2ang(nside, _p, lonlat=True)
-        _w = np.exp( - 0.5 * ( (_w[0] - ra_off)**2 + (_w[1] - dec)**2 )[:, None] / beam_sig **2 )
-        spec_off = []
-        for i in range(_p.shape[0]):
-            spec_off.append( imap[:, (pixs - _p[i]) == 0][None, :] / _w[i])
-        spec_off = np.concatenate(spec_off, axis=0)
-        spec_off = np.ma.masked_equal(spec_off, 0)
-        spec_off = np.ma.mean(spec_off, axis=0)
-
-        spec = spec - spec_off
-        if mJy:
-            spec = spec / mJy2K(freq*1.e-3)[:, None] #* 2.
-        return freq, spec, ra, dec
+    if mJy:
+        #spec = spec / mJy2K(freq*1.e-3, eta=0.6,)[:, None] #* 2.
+        #print np.mean(mJy2K(freq*1.e-3) )  * 1.e3
+        eta = 1.0
+        #print mJy2K(freq*1.e-3, eta=eta).min()  * 1.e3,
+        #print mJy2K(freq*1.e-3, eta=eta).max()  * 1.e3
+        #spec = spec / mJy2K(freq*1.e-3, eta=eta)[:, None] 
+        #noise= noise / mJy2K(freq*1.e-3, eta=eta)[:, None] 
+        spec  = spec / (25. * 1.e-3)
+        noise = noise / (25. * 1.e-3) 
 
 
-    return None
+    return freq, spec, p_ra, p_dec, noise
+
+#return None
+
+def get_nvss_flux(nvss_path, nvss_range, threshold=200, eta_b=None, mJy=False):
+
+    nvss_cat = get_nvss_radec(nvss_path, nvss_range)
+    freq = 1400.
+
+
+    for ii in range(nvss_cat.shape[0]):
+        _ra = nvss_cat['RA'][ii]
+        _dec= nvss_cat['DEC'][ii]
+        _flx= nvss_cat['FLUX_20_CM'][ii]
+        s_name = nvss_cat['NAME'][ii]
+
+        #_r = ((_ra - ra)**2 + (_dec - dec)**2)**0.5
+        #beam_off = _r.min() * 60
+        beam_off = 0.
+        if nvss_cat['FLUX_20_CM'][ii] > threshold:
+            yield freq, _flx, s_name, _ra, _dec, _flx
+
+def project_nvss_to_map(nside, nss_path, nvss_range, threshold=10, fwhm=3.):
+
+    nvss_cat = get_nvss_radec(nvss_path, nvss_range)
+
+    pixs = np.arange(hp.nside2npix(nside) + 1) - 0.5
+    nvss_pix = hp.ang2pix(nside, nvss_cat['RA'], nvss_cat['DEC'], lonlat=True)
+    nvss_cnt = np.histogram(nvss_pix, pixs)[0] * 1.
+    nvss_map = np.histogram(nvss_pix, pixs, weights=nvss_cat['FLUX_20_CM'])[0]
+
+    nvss_cnt[nvss_cnt==0] = np.inf
+    nvss_map /= nvss_cnt
+
+    #window = np.zeros(hp.nside2npix(nside), dtype='float32')
+    #window[0] = 1.
+    #window = hp.smoothing(window, fwhm=np.deg2rad(fwhm/60.))
+    #window /= window.max()
+
+    nvss_map[nvss_map<0] = 0
+    nvss_map = hp.ma(nvss_map, badval=0.)
+    print np.any(nvss_map.mask)
+    if fwhm != 0:
+        nvss_map = hp.smoothing(nvss_map, fwhm=np.deg2rad(fwhm/60.))
+        #sig = np.deg2rad(fwhm/60.) / 2. / np.sqrt(2. * np.log(2.))
+        #nvss_map *= 2. * np.pi * sig**2.
+
+    #nvss_map = nvss_map[None, ...]
+
+    return nvss_map, pixs, nside
+
+
+def project_nvss_to_map_partial(nside, pixs, nvss_path, nvss_range, threshold=500, fwhm=3.):
+
+    sig = fwhm / 60.
+
+    nvss_cat = get_nvss_radec(nvss_path, nvss_range)
+
+    pixs_ra, pixs_dec = hp.pix2ang(nside, pixs, lonlat=True)
+
+    pixs_ra = np.deg2rad(pixs_ra[:, None])
+    pixs_dec = np.deg2rad(pixs_dec[:, None])
+
+
+    nvss_flux = nvss_cat['FLUX_20_CM']
+    sel = nvss_flux > threshold
+    nvss_ra = np.deg2rad(nvss_cat['RA'][sel][None, :])
+    nvss_dec = np.deg2rad(nvss_cat['DEC'][sel][None, :])
+    nvss_flux = nvss_flux[sel][None, :]
+
+    nvss_map = np.zeros(pixs.shape, dtype='float64')
+
+    step = 100
+    nvss_N = nvss_flux.shape[1]
+    for i in range(0, nvss_N, step):
+
+        P = ( np.sin(pixs_dec) * np.sin(nvss_dec[:, i:i+step]) )\
+          + ( np.cos(pixs_dec) * np.cos(nvss_dec[:, i:i+step]) )\
+          * ( np.cos(pixs_ra - nvss_ra[:, i:i+step]) )
+
+        P = np.rad2deg(np.arccos(P))
+        P = np.exp( - 0.5 * ( P / sig ) ** 2. ) * nvss_flux[:, i:i+step]
+
+        P = np.sum(P, axis=1)
+
+        nvss_map = nvss_map + P
+
+        del P
+
+
+    return nvss_map, pixs, nside
 
 def get_pointsource_spec(nvss_path, nvss_range, threshold=200, eta_b=None, mJy=False):
 

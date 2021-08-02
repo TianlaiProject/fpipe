@@ -7,6 +7,7 @@ from scipy.signal import convolve2d
 
 from fpipe.plot import plot_map as pm
 from fpipe.point_source import source
+from fpipe.map import algebra as al
 
 from scipy.interpolate import interp1d, interp2d
 from scipy.interpolate import NearestNDInterpolator
@@ -14,14 +15,21 @@ from scipy.interpolate import NearestNDInterpolator
 import h5py as h5
 
 def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100, 
-        output_path=None, beam_size=3./60., plot_hit=False, hitmap=None):
+        output_path=None, beam_size=3./60., plot_hit=False, hitmap=None, 
+        ra_dec_path =None):
+    imap_info_list = []
+    for map_name in map_list:
+        with h5.File(map_name, 'r') as f:
+            imap = al.load_h5(f, 'clean_map')
+            imap = al.make_vect(imap, axis_names = imap.info['axes'])
 
-    for _s in source.get_pointsource_spec(nvss_path, nvss_range, threshold, mJy=True):
+            #imap = f['dirty_map'][:]
+            pixs = f['map_pix'][:]
+            nside = f['nside'][()]
+        imap_info_list.append([imap, pixs, nside])
 
-        fig = plt.figure(figsize=(12, 4))
-        ax1 = fig.add_axes([0.06, 0.13, 0.52, 0.8])
-        #ax0 = fig.add_axes([0.70, 0.1, 0.20, 0.8])
-        cax = fig.add_axes([0.93, 0.13, 0.010, 0.8])
+    #for _s in source.get_pointsource_spec(nvss_path, nvss_range, threshold, mJy=True):
+    for _s in source.get_nvss_flux(nvss_path, nvss_range, threshold, mJy=True):
 
         #ax1.plot(_s[0], _s[1], 'k--')
 
@@ -30,27 +38,34 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
 
         ymax = _s[1].max()*1.2
 
-        for map_name in map_list:
+        #for map_name in map_list:
+        spec_list = []
+        for imap_info in imap_info_list:
 
-            _r = source.get_map_spec(map_name, 'clean_map', _s[3], _s[4], 
+            _r = source.get_map_spec(imap_info, _s[3], _s[4], 
                     beam_size=beam_size, mJy=True)
             if _r is not None:
-                freq, spec, p_ra, p_dec = _r
+                freq, spec, p_ra, p_dec, error = _r
             else:
-                plt.close()
-                plt.clf()
                 continue
             spec = np.ma.masked_equal(spec, 0)
-            if np.all(spec.mask) or spec.shape[1] == 0:
-                plt.close()
-                plt.clf()
-                continue
-            ax1.plot(freq, spec, 'r.-', ms=5, mfc='none')
+            if not (np.all(spec.mask) or spec.shape[1] == 0):
+                spec_list.append([freq, spec])
 
-            ymax = max(ymax, np.ma.median(spec) * 1.5)
+                ymax = max(ymax, np.ma.median(spec) * 1.5)
 
-            xx_min = min(xx_min, freq.min())
-            xx_max = max(xx_max, freq.max())
+                xx_min = min(xx_min, freq.min())
+                xx_max = max(xx_max, freq.max())
+
+        if len(spec_list) == 0:
+            continue
+
+        fig = plt.figure(figsize=(12, 4))
+        ax1 = fig.add_axes([0.06, 0.13, 0.52, 0.8])
+        #ax0 = fig.add_axes([0.70, 0.1, 0.20, 0.8])
+        cax = fig.add_axes([0.93, 0.13, 0.010, 0.8])
+        for spec in spec_list:
+            ax1.plot(spec[0], spec[1], 'r.', ms=3, mfc='none')
 
         #if beam_size is not None:
         #    beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
@@ -59,8 +74,9 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
         #else:
         #    _w = 1.
         _w = 1.
-        ax1.plot(_s[0], _s[1]*_w, 'k--')
-        ax1.errorbar(_s[5][:, 0], _s[5][:, 1], _s[5][:, 2], fmt='go')
+        #ax1.plot(_s[0], _s[1]*_w, 'k--')
+        #ax1.errorbar(_s[5][:, 0], _s[5][:, 1], _s[5][:, 2], fmt='go')
+        ax1.plot(_s[0], _s[1]*_w, 'go')
 
 
         #ax1.set_ylabel(r'$T$ K')
@@ -83,26 +99,57 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
 
         ax0 = pm.plot_map_hp(map_name, map_key=map_key,
                 #map_key='noise_diag',
-                pix=0.5/60., indx=(slice(0, None), ), imap_shp = (50, 50),
+                pix=0.2/60., indx=(slice(0, None), ), imap_shp = (100, 100),
                 field_center=[(_s[3], _s[4]),], figsize=(6, 3), 
-                vmin=vmin, vmax=vmax, sigma = 10,
+                vmin=vmin, vmax=vmax, sigma = None,
                 title='', proj='ZEA', cmap='Blues',
                 axes = (fig, [0.65, 0.13, 0.27, 0.8], cax),
                 verbose=False)[1][0]
 
-        _nvss_range = [_s[3] - 25 * 0.5/60., _s[3] + 25 * 0.5/60.,
-                       _s[4] - 25 * 0.5/60., _s[4] + 25 * 0.5/60.]
-        pm.plot_nvss(nvss_path, [_nvss_range,], (fig, ax0), 10)
+        _nvss_range = [_s[3] - 20 * 0.5/60., _s[3] + 20 * 0.5/60.,
+                       _s[4] - 20 * 0.5/60., _s[4] + 20 * 0.5/60.]
+        pm.plot_nvss(nvss_path, [_nvss_range,], (fig, ax0), 1)
 
         ax0.plot(_s[3], _s[4], 'o', mec='r', mfc='none', ms=10, mew=1,
                    transform=ax0.get_transform('icrs'))
-        ax0.plot(_s[3]+8./60., _s[4], 'o', mec='g', mfc='none', ms=10, mew=1,
-                   transform=ax0.get_transform('icrs'))
+        #ax0.plot(_s[3]+8./60., _s[4], 'o', mec='g', mfc='none', ms=10, mew=1,
+        #           transform=ax0.get_transform('icrs'))
         ax0.plot(p_ra, p_dec, '+', mec='y', mfc='none', ms=10, mew=1,
                    transform=ax0.get_transform('icrs'))
         #ax0.add_artist(plt.Circle((_s[3], _s[4]), beam_size/2., color='k', fill=False,
         #        transform=ax0.get_transform('icrs')))
         ax0.set_title('')
+
+        beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
+        if ra_dec_path is not None:
+            with h5.File(ra_dec_path, 'r') as f:
+                #for dset in f.keys():
+                _w_list = []
+                for i in range(7):
+                    dset = 'ra_dec_%02d'%i
+                    radec = f[dset][:]
+                    mask  = f['mask_%02d'%i][:]
+                    for i in range(19):
+                        #_ra  = np.ma.array(radec[:, 0, i], mask=mask[:, i])
+                        #_dec = np.ma.array(radec[:, 1, i], mask=mask[:, i])
+                        _ra  = radec[:, 0, i]
+                        _dec = radec[:, 1, i]
+                        _sel = (_ra  > _nvss_range[0]) \
+                             * (_ra  < _nvss_range[1]) \
+                             * (_dec > _nvss_range[2]) \
+                             * (_dec < _nvss_range[3])
+                        if np.any(_sel):
+                            #ax0.plot(_ra[_sel], _dec[_sel], 'w.',
+                            #    transform=ax0.get_transform('icrs'), zorder=1000)
+                            _w = np.exp(-0.5*(((_ra[_sel] - p_ra)\
+                                    *np.cos(np.radians(_dec[_sel])))**2 \
+                                    + (_dec[_sel] - p_dec)**2)/beam_sig **2 )
+                            _w = min(1, _w.max())
+                            _w_list.append(_w)
+                #print _w_list
+                ax1.plot(_s[0], _s[1]*max(_w_list), 'b--')
+
+            #ax0.plot()
 
         if output_path is not None:
             #fig.savefig(output_path + '%s.pdf'%(_s[2].replace(' ', '-')), 

@@ -147,7 +147,7 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
         df['ra'] = ra
         df['ra'].attrs['dimname']  = 'Time, Baseline'
 
-        df['dec'] = dec.astype('float32')
+        df['dec'] = dec #.astype('float32')
         df['dec'].attrs['dimname'] = 'Time, Baseline'
 
         df.attrs['history'] = history

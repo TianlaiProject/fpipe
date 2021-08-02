@@ -169,6 +169,7 @@ class Apply_EtaA(timestream_task.TimestreamTask):
         bi = bl[0] - 1
         _eta = interp1d(self.eta_f, self.eta[bi], axis=-1)(ts.freq)
         _eta = _eta.T
+        print 'apply eta = ', np.mean(_eta)
         vis /= _eta[None, :, :]
 
 

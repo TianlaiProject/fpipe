@@ -37,7 +37,7 @@ _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360), 
         pix=3./60., field_center=[(165, 27.8), ], proj='ZEA', figsize=(14, 2),
         sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
-        nvss_path=None, verbose=True, cbar=True, colors='r'):
+        nvss_path=None, verbose=True, cbar=True, colors='r', logscale=False):
 
     with h5.File(map_name, 'r') as f:
         if verbose:
@@ -49,11 +49,20 @@ def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360),
         pixs = f['map_pix'][:]
         nside = f['nside'][()]
 
+        print f.keys()
+
     freq = imap.get_axis('freq')
     freq = freq[indx[-1]]
     imap = imap[indx]
+    imap = np.ma.masked_equal(imap, 0)
     if isinstance( indx[-1], slice):
-        imap = np.ma.mean(imap, axis=0)
+        if map_key == 'noise_diag':
+            imap = np.ma.mean(imap, axis=0)
+            imap[imap==0] = np.inf
+            imap = 1./imap
+            imap = np.sqrt(imap)
+        else:
+            imap = np.ma.mean(imap, axis=0)
         freq_label = 'Frequency %5.2f - %5.2f MHz'%(freq[0], freq[-1])
     else:
         freq_label = 'Frequency %5.2f MHz'%freq
@@ -61,7 +70,8 @@ def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360),
     return _plot_map_hp_multi(imap, pixs, nside, imap_shp = imap_shp, 
         pix=pix, field_center_list=field_center, proj=proj, figsize=figsize,
         sigma=sigma, vmin=vmin, vmax=vmax, cmap=cmap, axes=axes,
-        nvss_path=nvss_path, title = title + ' ' + freq_label, )
+        nvss_path=nvss_path, title = title + ' ' + freq_label, 
+        logscale=logscale)
     #return _plot_map_hp_multi(imap, pixs, nside, imap_shp = imap_shp, 
     #    pix=pix, field_center_list=field_center, proj=proj, figsize=figsize,
     #    sigma=sigma, vmin=vmin, vmax=vmax, cmap=cmap, axes=axes,
@@ -91,7 +101,8 @@ def get_projection(proj, imap_shp, field_center, pix):
 
 def _plot_map_hp_multi(imap, pixs, nside, imap_shp = (600, 360), axes=None, 
         pix=3./60., field_center_list=[(165, 27.8), ], proj='ZEA', figsize=(14, 2),
-        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', nvss_path=None, ):
+        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', nvss_path=None,
+        logscale=False):
     
     imap_full = np.zeros(hp.nside2npix(nside))
     imap_full[pixs] = imap
@@ -102,9 +113,9 @@ def _plot_map_hp_multi(imap, pixs, nside, imap_shp = (600, 360), axes=None,
         std  = np.ma.std(imap_full)
         vmin = mean - sigma * std
         vmax = mean + sigma * std
-    else:
-        if vmin is None: vmin = imap_full.min()
-        if vmax is None: vmax = imap_full.max()
+    #else:
+    #    if vmin is None: vmin = imap_full.min()
+    #    if vmax is None: vmax = imap_full.max()
 
     if axes is None:
         fig = plt.figure(figsize=figsize)
@@ -134,7 +145,18 @@ def _plot_map_hp_multi(imap, pixs, nside, imap_shp = (600, 360), axes=None,
 
         array = np.ma.masked_invalid(array)
         array[array==0] = np.ma.masked
-        im = ax.pcolormesh(array, cmap=cmap, vmin=vmin, vmax=vmax)
+
+        if sigma is None:
+            if vmin is None: vmin = array.min()
+            if vmax is None: vmax = array.max()
+
+        if logscale: 
+            norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+        else:
+            norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+        #im = ax.pcolormesh(array, cmap=cmap, vmin=vmin, vmax=vmax)
+        im = ax.pcolormesh(array, cmap=cmap, norm=norm)
 
         ax.minorticks_on()
         ax.set_aspect('equal')
@@ -159,13 +181,19 @@ def _plot_map_hp_multi(imap, pixs, nside, imap_shp = (600, 360), axes=None,
 
     ax.coords[0].set_axislabel('R.A. (J2000)', minpad=0.5)
 
-    ticks = list(np.linspace(vmin, vmax, 5))
     ticks_label = []
-    for x in ticks:
-        ticks_label.append(r"$%5.2f$"%x)
-    fig.colorbar(im, cax=cax, ticks=ticks)
-    cax.set_yticklabels(ticks_label, rotation=90, va='center')
-    cax.minorticks_off()
+    if not logscale:
+        ticks = list(np.linspace(vmin, vmax, 5))
+        for x in ticks:
+            ticks_label.append(r"$%5.2f$"%x)
+        fig.colorbar(im, cax=cax, ticks=ticks)
+        cax.set_yticklabels(ticks_label, rotation=90, va='center')
+        cax.minorticks_off()
+    else:
+        fig.colorbar(im, cax=cax)
+        cax.minorticks_off()
+        ticks_label = cax.get_yticklabels()
+        cax.set_yticklabels(ticks_label, rotation=90, va='center')
     c_label = r'$T\,$ K'
     cax.set_ylabel(c_label)
 
