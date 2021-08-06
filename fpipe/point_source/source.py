@@ -184,6 +184,93 @@ def project_nvss_to_map_partial(nside, pixs, nvss_path, nvss_range, threshold=50
 
     return nvss_map, pixs, nside
 
+def load_nvss_flux_from_map(map_name, nvss_path, nvss_range, threshold=100,
+        output_path=None, beam_size=3./60., f0 = 1400, df=25, flag_iter=5):
+
+    with h5.File(map_name, 'r') as f:
+        imap = al.load_h5(f, 'clean_map')
+        imap = al.make_vect(imap, axis_names = imap.info['axes'])
+
+        nmap = al.load_h5(f, 'noise_diag')
+        nmap = al.make_vect(nmap, axis_names = imap.info['axes'])
+
+        #imap = f['dirty_map'][:]
+        pixs = f['map_pix'][:]
+        nside = f['nside'][()]
+
+    imap_info = [imap, pixs, nside, nmap]
+
+    nvss_map = project_nvss_to_map_partial(nside, pixs, nvss_path,
+            nvss_range, threshold=10)[0]
+
+    spec_list = []
+    spec_erro = []
+    nvss_flux = []
+    nvss_flux_from_map = []
+    nvss_name = []
+    for _s in get_nvss_flux(nvss_path, nvss_range, threshold, mJy=True):
+
+        _r = get_map_spec(imap_info, _s[3], _s[4], beam_size=beam_size, mJy=True)
+        if _r is not None:
+            freq, spec, p_ra, p_dec, error = _r
+        else:
+            continue
+        spec = np.ma.masked_equal(spec, 0)
+
+
+
+        if beam_size is not None:
+            beam_sig = beam_size / (2. * np.sqrt(2.*np.log(2.)))
+            _w = np.exp(-0.5*(((p_ra - _s[3])*np.cos(np.radians(p_dec)))**2 \
+                    + (p_dec - _s[4])**2)/beam_sig **2 )
+        else:
+            _w = 1.
+        #_w = 1.
+
+        if not (np.all(spec.mask) or spec.shape[1] == 0):
+            #freq_sel = (freq > f0 - df) * (freq < f0 + df)
+            spec_list.append(spec/_w)
+            spec_erro.append(error/_w)
+            nvss_flux.append(_s[1])
+            nvss_name.append(_s[2])
+
+            _pix = hp.ang2pix(nside, p_ra, p_dec, lonlat=True)
+            _pix = np.where(pixs == _pix)[0][0]
+            nvss_flux_from_map.append(nvss_map[_pix])
+
+    freq_sel = (freq > f0 - df) * (freq < f0 + df)
+    spec = np.ma.array(spec_list)
+    spec = spec[:, freq_sel]
+    spec.mask[spec==0] = True
+
+    error = np.ma.array(spec_erro)
+    error = error[:, freq_sel]
+    error.mask[spec==0] = True
+
+    for i in range(flag_iter):
+
+        flux = np.ma.median(spec, axis=1)
+        dflux = np.ma.std(spec, axis=1)
+
+        mask = np.abs( spec - flux[:, None] ) - 4 * dflux[:, None] > 0
+        spec.mask[mask] = True
+
+    nfreq = np.sum((~spec.mask).astype('int'), axis=1) #spec.shape[1]
+    flux = np.ma.median(spec, axis=1)
+    dflux = np.ma.std(spec, axis=1) / np.sqrt(nfreq)
+
+    #error[error==0] = np.inf
+    #error = 1./error
+    #error = 1./np.sqrt(np.ma.mean(error**2, axis=1))
+    error = np.ma.mean(error, axis=1)
+    #error[error==0] = np.inf
+
+
+    return nvss_name, nvss_flux, nvss_flux_from_map, spec_list, flux, dflux, error
+
+
+
+
 def get_pointsource_spec(nvss_path, nvss_range, threshold=200, eta_b=None, mJy=False):
 
     freq = np.linspace(1050, 1450, 100)
