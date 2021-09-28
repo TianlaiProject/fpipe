@@ -54,6 +54,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
 
             'noise_weight' : True,
 
+            'beam_data_path' : None,
             'beam_fwhm_at21cm' : 3.0/60.,
             'beam_cut'  : 0.01,
 
@@ -565,8 +566,8 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, ra_axis, dec_axis,
         if mpiutil.rank0:
             logger.info('beam cut %f'%(beam_cut))
         P[P < beam_cut] *= 0.
-        P_norm = np.sum(P, axis=1)
-        #P_norm = np.max(P, axis=1)
+        #P_norm = np.sum(P, axis=1)
+        P_norm = np.max(P, axis=1)
         P_norm[P_norm==0] = np.inf
         P /= P_norm[:, None]
         #P /=  2. * np.pi * (beam_sig * np.pi / 180.) ** 2.

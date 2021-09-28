@@ -30,7 +30,8 @@ pipe_timing = True
 ra_list = np.linspace(9, 13, 8)
 
 #map_prefix = 'map_%02d'%map_id
-map_prefix = 'map_df28k_sumfeeds_CC_centeronly'
+#map_prefix = 'map_df28k_sumfeeds_CC_centeronly'
+map_prefix = 'map_df28k_sumfeeds_CC'
 ra_st = ra_list[map_id] * 15 - 0.3
 ra_ed = ra_list[map_id+1] * 15 + 0.3
 
@@ -63,7 +64,8 @@ dmh_diag_cov = True
 dmh_tblock_len = 1800
 dmh_baseline_file = None
 dmh_save_localHI = True
-dmh_center_only = True
+dmh_center_only = False
+dmh_beam_data_path = '/users/ycli/code/fpipe/fpipe/data/fwhm.dat'
 
 cm_input_files = ['%s/dm_%02d_%s_%s%s_vis.h5'%(map_prefix, map_id, DATA, DATE, suffix), ]
 cm_output_files  = ['%s/cm_%02d_%s_%s%s_vis.h5'%(map_prefix, map_id, DATA, DATE, suffix), ]

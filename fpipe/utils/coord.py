@@ -199,12 +199,13 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     print 'read ant. coord %s %s %s'%(tuple([x[0] for x in data_name]))
 
     data = np.array(data)
-    X = data[0]
-    Y = data[1]
-    Z = data[2]
+    X = data[0]#.astype('float64')
+    Y = data[1]#.astype('float64')
+    Z = data[2]#.astype('float64')
+    print(time[0].fits, X[0], Y[0], Z[0])
 
     # alt = 90. - za
-    sinalt = -Z / (X**2 + Y**2 + Z**2) ** 0.5
+    sinalt = -Z / np.sqrt(X**2 + Y**2 + Z**2)
     alt = np.array(np.arcsin(sinalt) * 180. / np.pi)
 
     az = np.array(np.arctan2(Y, X) * 180. / np.pi)

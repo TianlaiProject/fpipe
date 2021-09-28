@@ -23,10 +23,13 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
             imap = al.load_h5(f, 'clean_map')
             imap = al.make_vect(imap, axis_names = imap.info['axes'])
 
+            nmap = al.load_h5(f, 'noise_diag')
+            nmap = al.make_vect(nmap, axis_names = imap.info['axes'])
+
             #imap = f['dirty_map'][:]
             pixs = f['map_pix'][:]
             nside = f['nside'][()]
-        imap_info_list.append([imap, pixs, nside])
+        imap_info_list.append([imap, pixs, nside, nmap])
 
     #for _s in source.get_pointsource_spec(nvss_path, nvss_range, threshold, mJy=True):
     for _s in source.get_nvss_flux(nvss_path, nvss_range, threshold, mJy=True):
