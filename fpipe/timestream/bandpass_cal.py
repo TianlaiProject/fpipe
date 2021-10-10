@@ -19,6 +19,9 @@ from scipy.ndimage import median_filter
 
 import matplotlib.pyplot as plt
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Bandpass_Cal(timestream_task.TimestreamTask):
     """
     """
@@ -40,6 +43,7 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
         show_progress = self.params['show_progress']
         progress_step = self.params['progress_step']
 
+        logger.info('Load bandpass from %s'%self.params['bandpass_file'])
 
         func = ts.bl_data_operate
         func(self.cal_data, full_data=True, copy_data=False, 
@@ -54,7 +58,8 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
             _bandpass = f['bandpass'][:, bl[0]-1, :, :]
             _bandfreq = f['freq'][:]
             _bandpass = np.median(_bandpass, axis=0)
-            print bl[0] - 1, _bandpass.shape
+            msg = 'Apply bandpass to Feed %02d'%bl[0]
+            logger.info(msg)
 
             bandpass_interp = interpolate.interp1d(_bandfreq, _bandpass, axis=0)
             bandpass = bandpass_interp(ts['freq'][:])
@@ -95,7 +100,8 @@ class OutputBandpass(timestream_task.TimestreamTask):
                 show_progress=show_progress, 
                 progress_step=progress_step, keep_dist_axis=False)
 
-        print self.output_files
+        #print(self.output_files)
+        logger.info('Output bandpass to file %s'%self.output_files)
         with h5py.File(self.output_files[0], 'w') as f:
             f['bandpass'] = self.bandpass
             f['freq'] = ts.freq
@@ -114,8 +120,8 @@ class OutputBandpass(timestream_task.TimestreamTask):
         vis1 = np.ma.array(vis.copy())
         vis1.mask = vis_mask.copy()
 
-        if 'ns_on' in ts.iterkeys():
-            print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+        if 'ns_on' in iter(ts.keys()):
+            logger.info('Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1))
             if len(ts['ns_on'].shape) == 2:
                 on = ts['ns_on'][:, gi].astype('bool')
             else:
@@ -124,7 +130,7 @@ class OutputBandpass(timestream_task.TimestreamTask):
             vis1.mask[~on, ...] = True
             vis1.mask[on, ...] = False
         else:
-            print "No Noise Diode Mask info"
+            logger.info("No Noise Diode Mask info")
 
         vis1, on = get_Ncal(vis1, vis_mask, on, on_t)
 
@@ -169,14 +175,13 @@ class Apply_EtaA(timestream_task.TimestreamTask):
         bi = bl[0] - 1
         _eta = interp1d(self.eta_f, self.eta[bi], axis=-1)(ts.freq)
         _eta = _eta.T
-        print 'apply eta = ', np.mean(_eta)
         vis /= _eta[None, :, :]
 
 
 def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_path,
-                    blk_st=1, blk_ed=7):
+                    blk_st=1, blk_ed=7, bandpass_temp='%s_arcdrift%04d-%04d'):
 
-    bandpass_temp = '%s_arcdrift%04d-%04d'
+    #bandpass_temp = '%s_arcdrift%04d-%04d'
 
     time_list = []
     bandpass_combined = []
@@ -215,7 +220,8 @@ def load_bandpass(bandpass_path, bandpass_temp, tnoise_path=None,
 
     if tnoise_path is not None:
 
-        with h5.File(tnoise_path + 'Tnosie_M_low.h5', 'r') as f:
+        #with h5.File(tnoise_path + 'Tnosie_M_low.h5', 'r') as f:
+        with h5.File(tnoise_path, 'r') as f:
             #print f.keys()
             tnoise_md = f['Tnoise'][:]
             tnoise_md_freq = f['freq'][:]
@@ -325,7 +331,7 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None,
         values = nd[:, :, 0].flatten()[~msk]
         points = xi[~msk, :]
         if len(points) == 0:
-            print 'all mask'
+            logger.info('all mask')
             nd_xx = np.ones(shp)
         else:
             nd_xx = griddata(points, values, xi, method='nearest')
@@ -337,7 +343,7 @@ def est_gtgnu_onefeed(file_list, smooth=(3, 51), gi=0, Tnoise_file=None,
         values = nd[:, :, 1].flatten()[~msk]
         points = xi[~msk, :]
         if len(points) == 0:
-            print 'all mask'
+            logger.info('all mask')
             nd_yy = np.ones(shp)
         else:
             nd_yy = griddata(points, values, xi, method='nearest')
@@ -475,14 +481,14 @@ class Normal_Tsys(timestream_task.TimestreamTask):
 
         poly_order  = self.params['timevars_poly']
         on_t = self.params['noise_on_time']
-        if 'ns_on' in ts.iterkeys():
-            print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+        if 'ns_on' in iter(ts.keys()):
+            print('Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1))
             if len(ts['ns_on'].shape) == 2:
                 on = ts['ns_on'][:, gi].astype('bool')
             else:
                 on = ts['ns_on'][:]
         else:
-            print "No Noise Diode Mask info"
+            print("No Noise Diode Mask info")
             on = np.zeros(vis.shape[0]).astype('bool')
 
         vis1 = vis.copy()
@@ -521,7 +527,7 @@ class Normal_Tsys(timestream_task.TimestreamTask):
 
         T_sys = self.params['T_sys']
         if T_sys is not None:
-            print "Norm. T_sys to %f K"%T_sys
+            print("Norm. T_sys to %f K"%T_sys)
             vis /= np.ma.median(vis1[~on, ...], axis=(0, 1))[None, None, :]
             vis *= T_sys
             if self.params['sub_mean']:
@@ -529,12 +535,12 @@ class Normal_Tsys(timestream_task.TimestreamTask):
 
         relative_gain = self.params['relative_gain']
         if relative_gain is not None:
-            print "relative gain cal %d (%f %f)"%((gi,) + tuple(relative_gain[gi]))
+            print("relative gain cal %d (%f %f)"%((gi,) + tuple(relative_gain[gi])))
             vis *= relative_gain[gi, :][..., :]
 
         eta_A = self.params['eta_A']
         if eta_A is not None:
-            print 'eta A cal'
+            print('eta A cal')
             #factor = np.pi ** 2. / 4. / np.log(2.)
             vis /= eta_A[gi] #* factor
 
@@ -636,8 +642,8 @@ class Bandpass_Cal_old(timestream_task.TimestreamTask):
         vis1 = np.ma.array(vis.copy())
         vis1.mask = vis_mask.copy()
 
-        if 'ns_on' in ts.iterkeys():
-            print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+        if 'ns_on' in iter(ts.keys()):
+            print('Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1))
             if len(ts['ns_on'].shape) == 2:
                 on = ts['ns_on'][:, gi].astype('bool')
             else:
@@ -647,7 +653,7 @@ class Bandpass_Cal_old(timestream_task.TimestreamTask):
             vis1.mask[on, ...] = False
             #vis1.mask[:, bad_freq] = True
         else:
-            print "No Noise Diode Mask info"
+            print("No Noise Diode Mask info")
 
         vis1, on = get_Ncal(vis1, vis_mask, on, on_t)
 
@@ -709,6 +715,6 @@ class Bandpass_Cal_old(timestream_task.TimestreamTask):
 
         if self.params['T_sys'] is not None:
             T_sys = self.params['T_sys']
-            print "Norm. T_sys to %f K"%T_sys
+            print("Norm. T_sys to %f K"%T_sys)
             vis /= np.ma.median(vis[~on, ...], axis=(0, 1))[None, None, :]
             vis *= T_sys

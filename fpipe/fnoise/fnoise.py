@@ -34,12 +34,34 @@ def fit_fn(f, ps, ps_err, pars = [0, -3, 1.5, 100., -3.5, -4],
     #r.x[1] = 10. ** r.x[1]
     return func(r.x, _f) + func2(r.x, _f), _f, r.x
 
-    #func = lambda f, p0, p1, p2:  p0 * ( 1. + (p1/f)**p2)
-    #popt, pcov = curve_fit(func, f[good], ps[good], pars, maxfev=10000,
-    #        sigma=ps_err[good])
-    #return func(_f, *popt), _f, popt
+def fit_fn_only(f, ps, ps_err, pars = [0, -3, 1.5], bounds=([-4, -5, 0.1], [0, -1, 6.99])):
 
-def est_gt_ps(file_list, Tnoise_file=None, avg_len=21, output='./gt_ps.h5'):
+    if np.all(ps_err==0):
+        ps_err = np.ones_like(ps) * 10.
+        ps_err[ps<=0] = 0.
+
+    good  = ps_err > 0
+    #good[:2] = False
+
+    _f = np.logspace(np.log10(f.min()), np.log10(f.max()), 100)
+
+    func = lambda p, f: (10.**p[0]) * ( 1. + ((10.**p[1])/f)**p[2])
+    residuals = lambda p, f, y, yerr: (np.log10(y) - np.log10(func(p, f)))/np.log10(yerr)
+    r = least_squares(residuals, pars, 
+                      args=(f[good], ps[good], ps_err[good]), 
+                      bounds = bounds,
+                      loss = 'cauchy', max_nfev=100000)
+                      #loss = 'linear', method='lm')
+    #r.x[0] = 10. ** r.x[0]
+    #r.x[1] = 10. ** r.x[1]
+    return func(r.x, _f), _f, r.x
+
+def est_gt_ps(file_list, Tnoise_file=None, avg_len=21, output='./gt_ps.h5', fn_only=False):
+
+    if fn_only:
+        _fit_fn = fit_fn_only
+    else:
+        _fit_fn = fit_fn
 
     paras_list = []
 
@@ -88,8 +110,8 @@ def est_gt_ps(file_list, Tnoise_file=None, avg_len=21, output='./gt_ps.h5'):
         ps_result.append(ps_mean)
         er_result.append(ps_err)
 
-        ps_fit_xx, f_fit, paras_xx = fit_fn(bc, ps_mean[:, 0], ps_err[:, 0])
-        ps_fit_yy, f_fit, paras_yy = fit_fn(bc, ps_mean[:, 1], ps_err[:, 1])
+        ps_fit_xx, f_fit, paras_xx = _fit_fn(bc, ps_mean[:, 0], ps_err[:, 0])
+        ps_fit_yy, f_fit, paras_yy = _fit_fn(bc, ps_mean[:, 1], ps_err[:, 1])
         paras_xx[0] = 10. ** paras_xx[0]
         paras_xx[1] = 10. ** paras_xx[1]
         paras_yy[0] = 10. ** paras_yy[0]
@@ -184,7 +206,7 @@ def avg_freq(vis, mask, freq, avg_len=20):
     time_n, freq_n, pol_n = vis.shape
     if avg_len is None:
         avg_len = freq_n
-    split_n = freq_n / avg_len
+    split_n = int(freq_n / avg_len)
     if split_n == 0:
         msg = "Only %d freq channels, avg_len should be less than it"%freq_n
         raise ValueError(msg)

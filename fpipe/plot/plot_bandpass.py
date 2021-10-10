@@ -28,7 +28,7 @@ from scipy import signal
 import pandas as pd
 from IPython.display import HTML
 
-def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, ymax=5.e0):
+def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, ymax=5.e0, fn_only=False):
 
     with h5.File(gt_ps_file, 'r') as f:
         ps_result  = f['ps_result'][:]
@@ -43,8 +43,8 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
     fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, title=title)
 
     for bi in range(19):
-        ii = bi / 5
-        jj = bi % 5
+        ii = int(bi / 5)
+        jj = int(bi % 5)
 
         ax = axes[bi]
 
@@ -73,12 +73,20 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
         plt.clf()
 
     _result = [("F%02d"%(ii+1), ) + tuple(x.flatten()) for ii, x in enumerate(paras_list)]
-    _result = np.array(_result, dtype = [('Feed', 'S3'),
-        ('A XX', 'f4'), ('fk XX', 'f4'), ('alpha XX', 'f4'),
-        ('B XX', 'f4'), ('f0 XX', 'f4'), ('w     XX', 'f4'),
-        ('A YY', 'f4'), ('fk YY', 'f4'), ('alpha YY', 'f4'),
-        ('B YY', 'f4'), ('f0 YY', 'f4'), ('w     YY', 'f4'),
-        ])
+    if fn_only:
+        _result = np.array(_result, dtype = [('Feed', 'S3'),
+            ('A XX', 'f4'), ('fk XX', 'f4'), ('alpha XX', 'f4'),
+            #('B XX', 'f4'), ('f0 XX', 'f4'), ('w     XX', 'f4'),
+            ('A YY', 'f4'), ('fk YY', 'f4'), ('alpha YY', 'f4'),
+            #('B YY', 'f4'), ('f0 YY', 'f4'), ('w     YY', 'f4'),
+            ])
+    else:
+        _result = np.array(_result, dtype = [('Feed', 'S3'),
+            ('A XX', 'f4'), ('fk XX', 'f4'), ('alpha XX', 'f4'),
+            ('B XX', 'f4'), ('f0 XX', 'f4'), ('w     XX', 'f4'),
+            ('A YY', 'f4'), ('fk YY', 'f4'), ('alpha YY', 'f4'),
+            ('B YY', 'f4'), ('f0 YY', 'f4'), ('w     YY', 'f4'),
+            ])
     _result = HTML(pd.DataFrame(_result).to_html(index=False))
 
     return _result
@@ -115,8 +123,8 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
     fig, axes = axes_utils.setup_axes(5, 4, colorbar=False, title=title)
 
     for bi in range(19):
-        i = bi / 4
-        j = bi - i * 4
+        i = int(bi / 4)
+        j = int(bi - i * 4)
 
         ax = axes[bi]
 
@@ -309,8 +317,8 @@ def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None, ymin=None, y
 
     fig, axes = axes_utils.setup_axes(5, 4)
     for bi in range(gtgnu.shape[3]):
-        i = bi / 4
-        j = bi - i * 4
+        i = int(bi / 4)
+        j = int(bi - i * 4)
     
         ax = axes[bi]
         
@@ -396,8 +404,8 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
             ylabel = r'$g(\nu, t)$'
         
         for b in range(19):
-            i = b / 4
-            j = b % 4
+            i = int(b / 4)
+            j = int(b % 4)
             ax = axes[b]
             ax.plot(freq, bandpass_smooth[b, :, pol], c=cm.jet(cnorm(ii)), 
                     lw=0.8)

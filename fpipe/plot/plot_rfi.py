@@ -52,9 +52,9 @@ def output_rfi_hist(file_list, fbins=[1050, 1140, 1310, 1450], output=None,
 
             msk = vis_mask[:, 1:, ...] + vis_mask[:, :-1, ...]
             vis_diff = np.abs(vis[:, 1:, ...] - vis[:, :-1, ...])
-            print np.ma.min(vis_diff, axis=(0, 1))
-            print np.ma.max(vis_diff, axis=(0, 1))
-            print
+            print(np.ma.min(vis_diff, axis=(0, 1)))
+            print(np.ma.max(vis_diff, axis=(0, 1)))
+            print()
             for jj in range(hist.shape[0]): 
                 freq_sel = (freq > fbins[jj]) * (freq < fbins[jj+1])
                 _vis_diff = vis_diff[:, freq_sel, ...].flatten()
@@ -107,12 +107,12 @@ def plot_rfi_hist(hist, bins, axes=None, label_list = None, output=None, ls='-',
             
             xx_fit = np.logspace(-2, 1, 50)
             fit_params = np.polyfit(xx, yy, 2)
-            print fit_params,
+            print(fit_params, end=' ')
             c, b, a = fit_params
             sigma2 = -1./c/2.
             rms = ( sigma2 / 2. ) ** 0.5
             Tsys = rms * (dt * df)**0.5
-            print rms, Tsys
+            print(rms, Tsys)
             yy_fit = np.exp(np.poly1d(fit_params)(xx_fit))
             
             ax.plot(xx_fit, np.log10(yy_fit), 'o-', mfc='w', mec=c_list[ii], mew=0.5, 
@@ -154,7 +154,7 @@ def plot_rfi_hist_multi(hist_file, output=None):
     N1 = np.array(N1)
     N2 = np.array(N2)
     mask_ratio = 1. - N2 / N1
-    print 'Mask Ratio: ', mask_ratio
+    print('Mask Ratio: ', mask_ratio)
     
     
     ax.semilogx()

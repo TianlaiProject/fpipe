@@ -103,7 +103,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
             ts.local_vis_mask[:, local_hi, ...] = False
 
         self.init_output()
-        if 'ns_on' in ts.iterkeys():
+        if 'ns_on' in iter(ts.keys()):
             ns = ts['ns_on'].local_data
             ts.local_vis_mask[:] += ns[:, None, None, :]
             #ns = ts['ns_on'][:]
@@ -114,7 +114,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         ts.redistribute('frequency')
 
         vis_var = mpiarray.MPIArray.wrap(np.zeros(ts.vis.local_shape), 1)
-        axis_order = tuple(xrange(len(ts.vis.shape)))
+        axis_order = tuple(range(len(ts.vis.shape)))
         ts.create_time_ordered_dataset('vis_var', data=vis_var, axis_order=axis_order)
         #var  = ts['vis_var'][:]
         #print mpiutil.rank, var.shape
@@ -234,7 +234,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
     def finish(self):
 
         if mpiutil.rank0:
-            print 'Finishing MapMaking.'
+            print('Finishing MapMaking.')
 
         mpiutil.barrier()
 
@@ -341,10 +341,10 @@ class MakeMap_FlatSky(DirtyMap):
         if not isinstance(li, tuple): li = (li, )
         freq = ts.freq[gi[0]] * 1.e-3
         beam_fwhm = self.params['beam_fwhm_at21cm'] * 1.42 / freq
-        print "RANK%03d:"%mpiutil.rank + \
+        print("RANK%03d:"%mpiutil.rank + \
                 " Local  (" + ("%04d, "*len(li))%li + ")," +\
                 " Global (" + ("%04d, "*len(gi))%gi + ")"  +\
-                " at %5.4fGHz (fwhm = %4.3f deg)"%(freq, beam_fwhm)
+                " at %5.4fGHz (fwhm = %4.3f deg)"%(freq, beam_fwhm))
         if vis.dtype == np.complex:
             vis = np.abs(vis)
 
@@ -386,8 +386,8 @@ class MakeMap_FlatSky(DirtyMap):
             _vis_mask = vis_mask[:, p_idx, b_idx]
 
             if np.all(_vis_mask):
-                print " VIS (" + ("%03d, "*len(_vis_idx))%_vis_idx + ")" +\
-                        " All masked, continue"
+                print(" VIS (" + ("%03d, "*len(_vis_idx))%_vis_idx + ")" +\
+                        " All masked, continue")
                 #self.df['mask'][map_idx[:-1]] = 1
                 continue
 
@@ -619,7 +619,7 @@ def timestream2map_GBT(vis_one, vis_mask, time, ra, dec, map_tmp, n_poly = 1,
     _good *= ( dec > min(map_tmp.get_axis('dec')))
     _good *= ~vis_mask
     if np.sum(_good) < 5: 
-        print 'bad block < 5'
+        print('bad block < 5')
         return al.zeros_like(map_tmp), cov_inv_block
 
     ra   = ra[_good]
@@ -637,7 +637,7 @@ def timestream2map_GBT(vis_one, vis_mask, time, ra, dec, map_tmp, n_poly = 1,
     else:
         _vars = T_infinity ** 2.
     if _vars < T_small ** 2:
-        print "vars too small"
+        print("vars too small")
         _vars = T_small ** 2
     #thermal_noise = np.var(vis_one)
     thermal_noise = _vars
@@ -666,12 +666,12 @@ def make_cleanmap_GBT(dirty_map, cov_inv_block, threshold=1.e-5):
     cov_inv_diag, Rot = linalg.eigh(cov_inv_block, overwrite_a=True)
     map_rotated = sp.dot(Rot.T, dirty_map)
     bad_modes = cov_inv_diag <= threshold * cov_inv_diag.max()
-    print "cov_inv_diag max = %4.1f"%cov_inv_diag.max()
-    print "discarded: %4.1f" % (100.0 * sp.sum(bad_modes) / bad_modes.size) +\
-                "% of modes" + " (tho=%f)"%threshold
+    print("cov_inv_diag max = %4.1f"%cov_inv_diag.max())
+    print("discarded: %4.1f" % (100.0 * sp.sum(bad_modes) / bad_modes.size) +\
+                "% of modes" + " (tho=%f)"%threshold)
     map_rotated[bad_modes] = 0.
     cov_inv_diag[bad_modes] = 1.
-    print "cov_inv_diag min = %5.4e"%cov_inv_diag.min()
+    print("cov_inv_diag min = %5.4e"%cov_inv_diag.min())
     #cov_inv_diag[cov_inv_diag == 0] = 1.
     #print "cov_inv_diag min = %5.4e"%cov_inv_diag.min()
     map_rotated /= cov_inv_diag
@@ -789,7 +789,7 @@ def ortho_poly(x, n, window=1., axis=-1):
     # The following is the only way I know how to get the broadcast shape of
     # x and window.
     # Turns out I could use np.broadcast here.  Fix this later.
-    print x.shape, window.shape
+    print(x.shape, window.shape)
     shape = np.broadcast(x, window).shape
     m = shape[axis]
     # Construct a slice tuple for up broadcasting arrays.

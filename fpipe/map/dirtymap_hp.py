@@ -134,10 +134,10 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         if not isinstance(li, tuple): li = (li, )
         freq = ts.freq[gi[0]] * 1.e-3
         beam_fwhm = self.params['beam_fwhm_at21cm'] * 1.42 / freq
-        print "RANK%03d:"%mpiutil.rank + \
+        print("RANK%03d:"%mpiutil.rank + \
                 " Local  (" + ("%04d, "*len(li))%li + ")," +\
                 " Global (" + ("%04d, "*len(gi))%gi + ")"  +\
-                " at %5.4fGHz (fwhm = %4.3f deg)"%(freq, beam_fwhm)
+                " at %5.4fGHz (fwhm = %4.3f deg)"%(freq, beam_fwhm))
         if vis.dtype == np.complex:
             vis = np.abs(vis)
 
@@ -182,8 +182,8 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
             _vis_mask = vis_mask[:, p_idx, b_idx]
             
             if np.all(_vis_mask):
-                print " VIS (" + ("%03d, "*len(_vis_idx))%_vis_idx + ")" +\
-                        " All masked, continue"
+                print(" VIS (" + ("%03d, "*len(_vis_idx))%_vis_idx + ")" +\
+                        " All masked, continue")
                 #self.df['mask'][map_idx[:-1]] = 1
                 del _vis_mask
                 continue

@@ -133,7 +133,7 @@ def project_nvss_to_map(nside, nss_path, nvss_range, threshold=10, fwhm=3.):
 
     nvss_map[nvss_map<0] = 0
     nvss_map = hp.ma(nvss_map, badval=0.)
-    print np.any(nvss_map.mask)
+    print(np.any(nvss_map.mask))
     if fwhm != 0:
         nvss_map = hp.smoothing(nvss_map, fwhm=np.deg2rad(fwhm/60.))
         #sig = np.deg2rad(fwhm/60.) / 2. / np.sqrt(2. * np.log(2.))
@@ -377,7 +377,7 @@ def get_calibrator_spec(freq, cal_data=None, ra=None, dec=None, beam_off=0, mJy=
         etaAf = NearestNDInterpolator(coord, etaA)
 
         eta = etaAf(ra, dec)
-        print '[%f, %f] eta = %f'%(ra, dec, eta)
+        print('[%f, %f] eta = %f'%(ra, dec, eta))
     else:
         eta   = 1. #0.6 #0.9
 

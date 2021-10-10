@@ -160,7 +160,7 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
 
     legend_list = []
     ci = 0
-    for date in key_list_dict.keys():
+    for date in list(key_list_dict.keys()):
 
         key_list = key_list_dict[date]
         for beam, path in iter_file_list(result_path + '/%s/'%date, key_list,
@@ -238,7 +238,7 @@ def plot_fwhm_days(result_path, key_list_dict, beam_list,
 
     legend_list = []
     ci = 0
-    for date in key_list_dict.keys():
+    for date in list(key_list_dict.keys()):
 
         key_list = key_list_dict[date]
         for beam, path in iter_file_list(result_path + '/%s/'%date, key_list,
@@ -317,12 +317,12 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
         eta_list.append(eta)
 
     eta_list = np.array(eta_list)
-    eta_list.shape = (len(key_list_dict.keys()), 19, -1)
+    eta_list.shape = (len(list(key_list_dict.keys())), 19, -1)
 
 
     legend_list = []
     ci = 0
-    for date in key_list_dict.keys():
+    for date in list(key_list_dict.keys()):
 
         key_list = key_list_dict[date]
         for beam, path in iter_file_list(result_path + '/%s/'%date, key_list,
@@ -394,13 +394,13 @@ def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
             eta_list.append(eta)
 
         eta_list = np.array(eta_list)
-        eta_list.shape = (len(key_list_dict.keys()), 19, -1)
+        eta_list.shape = (len(list(key_list_dict.keys())), 19, -1)
 
 
     legend_list = []
     ci = 0
     peak = []
-    for date in key_list_dict.keys():
+    for date in list(key_list_dict.keys()):
 
         if eta_path is not None:
             with h5.File(eta_path + 'eta_%s.h5'%date, 'r') as f:

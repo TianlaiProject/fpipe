@@ -96,11 +96,13 @@ def fit_baseline(vis, time, vis_mask, baseline_file):
         xx = np.arange(vis.shape[1])
         #a_xx = interp1d(xx[~fmask], a_xx[~fmask],  axis=0,
         #        bounds_error=False, fill_value='extrapolate')(xx)
-        p = interp1d(xx[~fmask], p[~fmask, :], axis=0,
-                bounds_error=False, fill_value='extrapolate' )(xx)
-
-        for ii in range(vis.shape[1]):
-            bsl[:, ii, pi] = np.poly1d(p[ii])(_xx) * bsl_xx
+        if np.all(fmask):
+            bsl[:, :, pi] = 0.
+        else:
+            p = interp1d(xx[~fmask], p[~fmask, :], axis=0,
+                    bounds_error=False, fill_value='extrapolate' )(xx)
+            for ii in range(vis.shape[1]):
+                bsl[:, ii, pi] = np.poly1d(p[ii])(_xx) * bsl_xx
             
         #bsl[:, :, pi] =   a_xx[None, :] * bsl_xx[:, None]
 

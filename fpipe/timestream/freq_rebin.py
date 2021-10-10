@@ -62,7 +62,7 @@ class Rebin(timestream_task.TimestreamTask):
             # average over frequency
             dfreq_raw = ts.freq[1] - ts.freq[0]
             nfreq_raw = ts.freq.shape[0]
-            for idx in xrange(bin_number):
+            for idx in range(bin_number):
                 inds, weight = unique(repeat_inds[start[idx]:end[idx]], return_counts=True)
                 # rebin freq
                 freq[idx] = average(ts.freq[inds], axis=0, weights=weight)
@@ -82,12 +82,12 @@ class Rebin(timestream_task.TimestreamTask):
             ts.create_main_axis_ordered_dataset(axis_order, 'vis_mask', vis_mask, axis_order, recreate=True, copy_attrs=True)
             ts.create_freq_ordered_dataset('freq', freq, recreate=True, copy_attrs=True, check_align=True)
 
-            print 'freq resolution reduced from %s to %f MHz (%d - %d)'%(
-                   dfreq_raw,  freq[1] - freq[0], nfreq_raw, freq.shape[0])
+            print(('freq resolution reduced from %s to %f MHz (%d - %d)'%(
+                   dfreq_raw,  freq[1] - freq[0], nfreq_raw, freq.shape[0])))
 
             # for other freq_axis datasets
-            for name in ts.freq_ordered_datasets.keys():
-                if name in ts.iterkeys() and not name in ('freq', 'vis', 'vis_mask'): # exclude already rebinned datasets
+            for name in list(ts.freq_ordered_datasets.keys()):
+                if name in iter(list(ts.keys())) and not name in ('freq', 'vis', 'vis_mask'): # exclude already rebinned datasets
                     raise RuntimeError('Should not have other freq_ordered_datasets %s' % name)
 
             # update freqstep attr

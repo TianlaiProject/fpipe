@@ -55,13 +55,13 @@ def rfftfreqn(n, d = None):
     # zero-centered frequency vectors, except the last dimension (as
     # we are doing a real transform).
     #mgslices = map(lambda x: slice(-x/2, x/2, 1.0), n[:-1])\
-    mgslices = map(lambda x: slice(-(x-1)/2, (x+1)/2, 1.0), n[:-1])\
+    mgslices = [slice(-(x-1)/2, (x+1)/2, 1.0) for x in n[:-1]]\
             + [slice(0, n[-1]/2+1, 1.0)]
     mgarr = np.mgrid[mgslices]
 
     # Use fftshift to move the zero elements to the start of each
     # dimension (except the last dimension).
-    shiftaxes = range(1,len(n))
+    shiftaxes = list(range(1,len(n)))
     shiftarr = np.fft.fftshift(mgarr, axes=shiftaxes)
 
     # Roll the first axis to the back so the components of the

@@ -148,7 +148,7 @@ def physical_grid_lf(input_array, refinement=1, pad=2, order=0, feedback=1,
                                             abs(phys_dim[2]) / float(n[2] - 1),
                                             abs(c2 - c1) / float(n[0] - 1) )
         logger.debug(msg)
-        print msg
+        print(msg)
 
     # this is wasteful in memory, but numpy can be pickled
     phys_map = algebra.make_vect(np.zeros(n), axis_names=('freq', 'ra', 'dec'))
@@ -278,7 +278,7 @@ def physical_grid(input_array, refinement=1, pad=2, order=0, feedback=1,
                                             abs(phys_dim[2]) / float(n[2] - 1),
                                             abs(c2 - c1) / float(n[0] - 1) )
         logger.debug(msg)
-        print msg
+        print(msg)
 
 
     # this is wasteful in memory, but numpy can be pickled

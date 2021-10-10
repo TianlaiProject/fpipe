@@ -65,7 +65,7 @@ class Sir(timestream_task.TimestreamTask):
         #     ns_on = ts['ns_on'][:]
         #     mask_ns_on = vis_mask[ns_on]
 
-        if 'ns_on' in ts.iterkeys():
+        if 'ns_on' in iter(ts.keys()):
             has_ns = True
             if len(ts['ns_on'].shape) == 1:
                 on = ts['ns_on']
@@ -105,5 +105,6 @@ class Sir(timestream_task.TimestreamTask):
         ts.vis_mask[:] += mask[:, :, None, None]
 
         if has_ns:
-            ts.vis_mask[on] = False # undo ns_on mask
+            #ts.vis_mask[on] = False # undo ns_on mask
+            ts.vis_mask[:] *= ~(on[:, None, None, None].astype('bool'))
 

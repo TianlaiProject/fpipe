@@ -162,7 +162,7 @@ def CN(q, y, freq0, params, bcast=True, return_beam=False, max_beam=False):
     #fwhm = 1.2 * fwhm1400 * 1400./ freq * np.pi / 180.
     fwhm = 1.2 * const.c.to('m/s').value / (freq * 1.e6) / D_dish
     if max_beam:
-        print 'use max beam %f'%fwhm.max()
+        print('use max beam %f'%fwhm.max())
         fwhm = np.ones_like(fwhm) * fwhm.max()
     #fwhm = np.ones_like(freq) * np.pi / 180.
     B_perp = np.exp(- ( q * fwhm )**2. / 16. / np.log(2.) )

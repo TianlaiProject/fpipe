@@ -43,11 +43,11 @@ class Flag(timestream_task.TimestreamTask):
         block_length = self.params['block_length']
         total_length = ts.local_vis.shape[0]
 
-        print "%d / %d"%(total_length, block_length)
+        print(("%d / %d"%(total_length, block_length)))
         for ii in range(0, total_length, block_length):
 
             sel = slice(ii, ii + block_length)
-            print sel
+            print(sel)
 
             data1 = np.ma.array(ts.local_vis[sel, ...].copy(), 
                     mask=ts.local_vis_mask[sel, ...].copy())
@@ -61,7 +61,7 @@ class Flag(timestream_task.TimestreamTask):
             nchan1 = data1.shape[1]
             percent_masked1 = float(len(bad_freqs)) / nchan1
             badness = (percent_masked1 > badness_thres)
-            print("percent masked = ", percent_masked1)
+            print(("percent masked = ", percent_masked1))
             if badness:
                 data2 = np.ma.array(ts.local_vis[sel, ...].copy(), 
                         mask=ts.local_vis_mask[sel, ...].copy())
@@ -130,7 +130,7 @@ class Flag(timestream_task.TimestreamTask):
         data.mask += fmask[None, :, None, None]
         bad_freq_list += list(np.where(fmask)[0])
         num_mask = np.ma.count_masked(data)
-        print("mask freq number = ", amount_masked, num_mask)
+        print(("mask freq number = ", amount_masked, num_mask))
 
         return amount_masked
 
@@ -155,7 +155,7 @@ class Flag(timestream_task.TimestreamTask):
             ed = min(time+flag_size, data.shape[0])
             data[st:ed, :, :, :] = np.ma.masked
         num_mask = np.ma.count_masked(data)
-        print("mask time number = ", amount_masked, num_mask)
+        print(("mask time number = ", amount_masked, num_mask))
 
         return amount_masked
 

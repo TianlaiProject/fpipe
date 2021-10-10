@@ -5,7 +5,7 @@ import matplotlib.ticker
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import MaxNLocator,ScalarFormatter
 
-import data_format
+from . import data_format
 import h5py
 from fpipe.utils import coord
 
@@ -48,7 +48,7 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
         beam_n = len(beam_list)
         for ii in range(beam_n):
         
-            print fmin, fmax
+            print((fmin, fmax))
             if degrade_freq_resol is not None:
                 fdata = data_format.FASTfits_Spec(data_file_list[ii], None, None)
                 if degrade_time_resol is not None:
@@ -64,7 +64,7 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
                 if degrade_time_resol is not None:
                     fdata.rebin_time(degrade_time_resol)
                 fdata.flag_cal(*noise_cal)
-            print fdata.history
+            print((fdata.history))
             if ii == 0: history += fdata.history
         
             if data_shp is None:
@@ -89,10 +89,10 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
                 df.attrs['nfreq'] = nfreq
                 df.attrs['freqstart'] = fdata.freq[0]
                 df.attrs['freqstep'] = fdata.freq[1] - fdata.freq[0]
-                print 'Frequency range [%8.4f, %8.4f] MHz'%(
-                        fdata.freq[0], fdata.freq[-1])
-                print 'Frequency %8.4f MHz x %d'%(
-                        fdata.freq[1] - fdata.freq[0], nfreq)
+                print(('Frequency range [%8.4f, %8.4f] MHz'%(
+                        fdata.freq[0], fdata.freq[-1])))
+                print(('Frequency %8.4f MHz x %d'%(
+                        fdata.freq[1] - fdata.freq[0], nfreq)))
 
                 ## get ra dec according to meridian scan
                 #ra, dec = get_pointing_meridian_scan(fdata.time, dec0, 
@@ -137,7 +137,7 @@ def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None,
             del fdata
             gc.collect()
             
-            print
+            print()
         
         # get ra dec according to meridian scan
         beam_indx = [x-1 for x in beam_list]

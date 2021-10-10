@@ -104,7 +104,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                                 dset_info = self.map_info)
             mask = np.ones(self.dset_shp[:1]).astype('bool')
             for ii in range(len(self.output_files)):
-                for key in self.df_out[ii][mode_key].keys():
+                for key in list(self.df_out[ii][mode_key].keys()):
                     self.df_out[-1][mode_key][:]\
                             += self.df_out[ii]['weight'][:]\
                             *  self.df_out[ii]['%s/%s'%(mode_key, key)][:]
@@ -141,8 +141,8 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
             tind_l = tuple(tind_l)
             tind_r = tuple(tind_r)
             tind_o = tind_o
-            print ("RANK %03d fgrm.\n(" + "%03d,"*len(tind_l) + ") x ("\
-                    + "%03d,"*len(tind_r) + ")\n")%((mpiutil.rank, ) + tind_l + tind_r)
+            print(("RANK %03d fgrm.\n(" + "%03d,"*len(tind_l) + ") x ("\
+                    + "%03d,"*len(tind_r) + ")\n")%((mpiutil.rank, ) + tind_l + tind_r))
 
             tind_list = [tind_l, tind_r]
             maps    = []
@@ -253,7 +253,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                     self.df_out[tind_r[0]][dset_key][:] = copy.deepcopy(maps[1])
 
                 # for the case of auto with different svd svd modes
-                if 'Combined' in self.df_out[tind_r[0]][group_name].keys():
+                if 'Combined' in list(self.df_out[tind_r[0]][group_name].keys()):
                     dset_key = group_name + 'Combined'
                     _map = maps[0].copy() * weights[0].copy()\
                          + maps[1].copy() * weights[1].copy()
@@ -272,7 +272,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
 
     def finish(self):
         #if mpiutil.rank0:
-        print 'RANK %03d Finishing FGRM'%(mpiutil.rank)
+        print('RANK %03d Finishing FGRM'%(mpiutil.rank))
 
         mpiutil.barrier()
         for df in self.df_out:
@@ -422,7 +422,7 @@ def make_noise_factorizable(noise, weight_prior=1.e3):
     
     weight_prior used to be 10^-30 before prior applied
     """
-    print "making the noise factorizable"
+    print("making the noise factorizable")
     
     #noise[noise < weight_prior] = 1.e-30
     #noise = 1. / noise
@@ -466,7 +466,7 @@ def degrade_resolution(maps, noises, conv_factor=1.2, mode="constant",
 
     mode is the ndimage.convolve flag for behavior at the edge
     """
-    print "degrading the resolution to a common beam: ", conv_factor
+    print("degrading the resolution to a common beam: ", conv_factor)
     noise1, noise2 = noises
     map1, map2 = maps
 

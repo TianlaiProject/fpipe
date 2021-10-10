@@ -26,7 +26,7 @@ _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 
 def iter_ps_list(ps_path, ps_name_list, tr_path=None, cross=True, 
         to1d=False, from2d=True):
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     for ii in range(len(ps_keys)):
         ps_name = ps_name_list[ps_keys[ii]]
         if tr_path is not None:
@@ -103,7 +103,7 @@ def _add_axes_1d(figsize, plot_null=False):
 
 def _add_axes_2d(figsize, ps_name_list, logk=True):
 
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ncol = len(ps_keys)
     fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(1, ncol, left=0.08, bottom=0.1, top=0.9, right=0.90,
@@ -214,7 +214,7 @@ def plot_1dps(ps_path, ps_name_list, tr_path=None, figsize=(8,6), title='',
 
     if lognorm: plot_null = False
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ps_n = len(ps_keys)
     shift = (np.arange(ps_n) - (float(ps_n) - 1.)/ 2.) * shift
 
@@ -403,7 +403,7 @@ def plot_2dtr(ps_path, ps_name_list, ps_name_ref,
               figsize=(16, 4),title='', vmax=None, vmin=None, 
               logk=True, cross=False, lognorm=False):
 
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     cols = len(ps_keys)
     fig = plt.figure(figsize=figsize)
     fig.suptitle(title)

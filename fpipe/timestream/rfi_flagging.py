@@ -11,7 +11,7 @@ Inheritance diagram
 import numpy as np
 import h5py as h5
 import gc
-import timestream_task
+from . import timestream_task
 from fpipe.timestream import timestream_task
 from tlpipe.container.timestream import Timestream
 from tlpipe.rfi import interpolate
@@ -85,7 +85,7 @@ class Flag(timestream_task.TimestreamTask):
         fk_size = self.params['fk_size']
         threshold_num = max(0, int(self.params['threshold_num']))
 
-        if 'ns_on' in ts.iterkeys():
+        if 'ns_on' in iter(ts.keys()):
             has_ns = True
             if len(ts['ns_on'].shape) == 1:
                 on = ts['ns_on']
@@ -128,13 +128,13 @@ class Flag(timestream_task.TimestreamTask):
             return
 
         # next rounds
-        for i in xrange(threshold_num):
+        for i in range(threshold_num):
             # Gaussian fileter
-            gf = gaussian_filter.GaussianFilter(vis_diff, st.vis_mask, time_kernal_size=tk_size, freq_kernal_size=fk_size, filter_direction=flag_direction)
+            gf = gaussian_filter.GaussianFilter(vis_diff, np.array(st.vis_mask), time_kernal_size=tk_size, freq_kernal_size=fk_size, filter_direction=flag_direction)
             background = gf.fit()
             # sum-threshold
             vis_diff = vis_diff - background
-            st = sum_threshold.SumThreshold(vis_diff, st.vis_mask, first_threshold, exp_factor, distribution, max_threshold_len, min_connected)
+            st = sum_threshold.SumThreshold(vis_diff, np.array(st.vis_mask), first_threshold, exp_factor, distribution, max_threshold_len, min_connected)
             st.execute(sensitivity, flag_direction)
 
             # if all have been masked, no need to flag again
@@ -144,7 +144,9 @@ class Flag(timestream_task.TimestreamTask):
         # replace vis_mask with the flagged mask
         ts.vis_mask[:] += st.vis_mask[:, :, None, None]
         if has_ns:
-            ts.vis_mask[on] = False # undo ns_on mask
+            #ts.vis_mask[(on.astype('bool'), Ellipsis)] = False # undo ns_on mask
+            #ts.vis_mask[on[:, None, None, None]] = False # undo ns_on mask
+            ts.vis_mask[:] *= ~(on[:, None, None, None].astype('bool'))
 
 def output_rfi_hist(ts, tbins=None, fbins=[1050, 1140, 1310, 1450], output=None):
     

@@ -69,6 +69,7 @@ from numpy.lib.utils import safe_eval
 #import fpipe.map.cubic_conv_interpolation as cci
 
 import tlpipe.kiyopy.custom_exceptions as ce
+from functools import reduce
 
 # ---- Slight modification to the NPY format. ---------------------------------
 
@@ -479,7 +480,7 @@ def save(file, iarray, metafile=None, version=(1,0)) :
     except SyntaxError :
         raise ce.DataError("Array info not representable as a string.")
     # Save the array in .npy format.
-    if isinstance(file, basestring):
+    if isinstance(file, str):
         fid = open(file, "wb")
     else:
         fid = file
@@ -516,7 +517,7 @@ def save_h5(h5obj, path, iarray):
     # import h5py, which we don't want to do (could do it locally).
     data = h5obj.create_dataset(path, iarray.shape, iarray.dtype)
     data[:] = iarray[:]
-    for key, value in iarray.info.iteritems():
+    for key, value in iarray.info.items():
         data.attrs[key] = repr(value)
 
 def load_h5(h5obj, path):
@@ -541,7 +542,7 @@ def load_h5(h5obj, path):
     iarray = np.empty(data.shape, data.dtype)
     iarray[:] = data[:]
     info = {}
-    for key, value in data.attrs.iteritems():
+    for key, value in data.attrs.items():
         info[key] = safe_eval(value)
     iarray = info_array(iarray, info)
     return iarray
@@ -573,8 +574,8 @@ def _check_axis_names(array, axis_names=None) :
         axis_names = array.axes
 
     if len(axis_names) != array.ndim :
-        print axis_names
-        print array.ndim
+        print(axis_names)
+        print(array.ndim)
         raise ValueError("axis_names parameter must be a sequence of length "
                          "arr.ndim")
     else :
@@ -1039,7 +1040,7 @@ class vect(alg_object) :
             raise ValueError("Array to convert must be instance of " +
                              str(cls.info_base))
         obj = input_array.view(cls)
-        if obj.info.has_key('type') :
+        if 'type' in obj.info :
             if not axis_names is None :
                 warnings.warn("Initialization argument ignored. Requisite "
                               "metadata for vector already exists. "
@@ -1231,7 +1232,7 @@ class mat(alg_object) :
         
         obj = input_array.view(cls)
 
-        if obj.info.has_key('type') :
+        if 'type' in obj.info :
             if ((not axis_names is None) or (not row_axes is None) or 
                 (not col_axes is None)) :
                 warnings.warn("Initialization argument ignored. Requisite "
@@ -1408,7 +1409,7 @@ class mat(alg_object) :
             def __iter__(self) :
                 return self
 
-            def next(self) :
+            def __next__(self) :
                 if self.ii >= self.n_blocks :
                     raise StopIteration()
                 else :
@@ -1458,7 +1459,7 @@ class mat(alg_object) :
             def __iter__(self) :
                 return self
 
-            def next(self) :
+            def __next__(self) :
                 inds = ()
                 ii = self.ii
                 self.ii += 1
@@ -1466,7 +1467,7 @@ class mat(alg_object) :
                     raise StopIteration()
                 # The sequence that will eventually be used to subscript the
                 # array.
-                array_index = [slice(sys.maxint)] * self.ndim
+                array_index = [slice(sys.maxsize)] * self.ndim
                 # Get the indices.  Loop through the axes backward.
                 for jj in range(len(self.axes) - 1, -1, -1) :
                     array_index[self.axes[jj]] = ii%self.shape[jj]
@@ -1812,14 +1813,14 @@ def partial_dot(left, right):
         left_cols = list(left.cols)
     elif isinstance(left, vect):
         left_rows = []
-        left_cols = range(left.ndim)
+        left_cols = list(range(left.ndim))
     else:
         raise TypeError(msg)
     if isinstance(right, mat):
         right_rows = list(right.rows)
         right_cols = list(right.cols)
     elif isinstance(right, vect):
-        right_rows = range(right.ndim)
+        right_rows = list(range(right.ndim))
         right_cols = []
     else:
         raise TypeError(msg)
@@ -1949,13 +1950,13 @@ def partial_dot(left, right):
                  + left_notdot_names + right_todot_diag_names
                  + right_cols_only_names)
     # First add the block diagonal axes as both rows and columns.
-    out_rows = range(len(left_notdot_diag) + len(left_todot_diag_diag)
-                     + len(right_notdot_diag))
+    out_rows = list(range(len(left_notdot_diag) + len(left_todot_diag_diag)
+                     + len(right_notdot_diag)))
     out_cols = list(out_rows)
     # Now add the others.
-    out_rows += range(len(out_rows), len(out_rows) + len(left_todot_diag)
-                      + len(left_rows_only) + len(right_notdot))
-    out_cols += range(len(out_rows), len(out_shape))
+    out_rows += list(range(len(out_rows), len(out_rows) + len(left_todot_diag)
+                      + len(left_rows_only) + len(right_notdot)))
+    out_cols += list(range(len(out_rows), len(out_shape)))
     # Output data type.
     # This is no good because it crashes for length 0 arrays.
     #out_dtype = (left.flat[[0]] * right.flat[[0]]).dtype
@@ -2053,14 +2054,14 @@ def partial_dot(left, right):
     out_sliced_reshape = tuple(left_rows_only_shape + left_notdot_shape
                                + right_notdot_shape + right_cols_only_shape)
     # And finally we will need to permute the out axes.
-    out_sliced_permute = range(len(left_rows_only))
-    out_sliced_permute += range(len(left_rows_only) + len(left_notdot_shape),
+    out_sliced_permute = list(range(len(left_rows_only)))
+    out_sliced_permute += list(range(len(left_rows_only) + len(left_notdot_shape),
                                 len(left_rows_only) + len(left_notdot_shape) 
-                                + len(right_notdot))
-    out_sliced_permute += range(len(left_rows_only), len(left_rows_only)
-                                + len(left_notdot))
-    out_sliced_permute += range(len(out_sliced_reshape)- len(right_cols_only),
-                                len(out_sliced_reshape))
+                                + len(right_notdot)))
+    out_sliced_permute += list(range(len(left_rows_only), len(left_rows_only)
+                                + len(left_notdot)))
+    out_sliced_permute += list(range(len(out_sliced_reshape)- len(right_cols_only),
+                                len(out_sliced_reshape)))
     # Create an index for each of left, right and out.
     left_slice = [slice(None)] * left.ndim
     right_slice = [slice(None)] * right.ndim
@@ -2069,10 +2070,10 @@ def partial_dot(left, right):
     left_scalar_flag = False
     right_scalar_flag = False
     # Now we loop over all the block diagonal axes.
-    for ii in xrange(all_diag_size):
+    for ii in range(all_diag_size):
         # Figure out exactly which blocks we are dealing with.
         tmp_ii = ii
-        for kk in xrange(n_diag_axes - 1, -1, -1):
+        for kk in range(n_diag_axes - 1, -1, -1):
             this_index = tmp_ii % all_diag_shape[kk]
             out_slice[out_diag_inds[kk]] = this_index
             if not left_diag_inds[kk] is None:
@@ -2173,29 +2174,29 @@ def array_summary(array, testname, axes, meetall=False, identify_entries=True):
     """
     total_matching = array.sum()
     if total_matching != 0:
-        print testname + "s:"
+        print(testname + "s:")
         match_count = np.apply_over_axes(np.sum, array, axes)
-        print match_count.flatten()
+        print(match_count.flatten())
         if identify_entries:
             if meetall:
                 arrayshape = array.shape
                 subarray_size = reduce(operator.mul,
                                        [arrayshape[i] for i in axes])
-                print "with all " + testname + "s: " + \
-                      repr(np.where(match_count.flatten() == subarray_size))
+                print("with all " + testname + "s: " + \
+                      repr(np.where(match_count.flatten() == subarray_size)))
             else:
-                print "has " + testname + ": " + \
-                      repr(np.where(match_count.flatten() != 0))
-            print "total " + testname + "s: " + repr(total_matching)
-        print "-" * 80
+                print("has " + testname + ": " + \
+                      repr(np.where(match_count.flatten() != 0)))
+            print("total " + testname + "s: " + repr(total_matching))
+        print("-" * 80)
     else:
-        print "There are no " + testname + " entries"
+        print("There are no " + testname + " entries")
 
 def compressed_array_summary(array, name, axes=[1, 2], extras=False):
     """print various summaries of arrays compressed along specified axes"""
 
-    print "-" * 80
-    print "array property summary for " + name + ":"
+    print("-" * 80)
+    print("array property summary for " + name + ":")
     array_summary(np.isnan(array), "nan", axes)
     array_summary(np.isinf(array), "inf", axes)
     array_summary((array == 0.), "zero", axes, meetall=True)
@@ -2205,10 +2206,10 @@ def compressed_array_summary(array, name, axes=[1, 2], extras=False):
         sum_nu = np.apply_over_axes(np.sum, array, axes)
         min_nu = np.apply_over_axes(np.min, array, axes)
         max_nu = np.apply_over_axes(np.max, array, axes)
-        print sum_nu.flatten()
-        print min_nu.flatten()
-        print max_nu.flatten()
-    print ""
+        print(sum_nu.flatten())
+        print(min_nu.flatten())
+        print(max_nu.flatten())
+    print("")
 
 
 def cartesian(arrays, out=None):
@@ -2258,7 +2259,7 @@ def cartesian(arrays, out=None):
     out[:, 0] = np.repeat(arrays[0], m)
     if arrays[1:]:
         cartesian(arrays[1: ], out=out[0: m, 1: ])
-        for j in xrange(1, arrays[0].size):
+        for j in range(1, arrays[0].size):
             out[j * m: (j + 1) * m, 1: ] = out[0: m, 1: ]
 
     return out

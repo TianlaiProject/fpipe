@@ -211,7 +211,7 @@ def flag_freq(vis):
         if new_mask  == 0:
             return mask
 
-    print new_mask
+    print(new_mask)
     return mask
 
 def load_fitting_params(path):
@@ -276,7 +276,7 @@ def load_eta(result_path, key_list_dict, beam_list,
 
     r = []
     f = None
-    for date in key_list_dict.keys():
+    for date in list(key_list_dict.keys()):
         key_list = key_list_dict[date]
 
         #beam_list = []
@@ -361,7 +361,7 @@ def output_fit_eta(result_path, key_list_dict, output_path, beam_list,
             band_list, tnoise_model, 0):
         eta_xx.append(eta)
     eta_xx = np.array(eta_xx)
-    eta_xx.shape = (len(key_list_dict.keys()), 19, -1)
+    eta_xx.shape = (len(list(key_list_dict.keys())), 19, -1)
             
 
     eta_yy = []
@@ -369,7 +369,7 @@ def output_fit_eta(result_path, key_list_dict, output_path, beam_list,
             band_list, tnoise_model, 1):
         eta_yy.append(eta)
     eta_yy = np.array(eta_yy)
-    eta_yy.shape = (len(key_list_dict.keys()), 19, -1)
+    eta_yy.shape = (len(list(key_list_dict.keys())), 19, -1)
 
 
     eta = np.concatenate([eta_xx[:, :, None, :], eta_yy[:, :, None, :]], axis=2)

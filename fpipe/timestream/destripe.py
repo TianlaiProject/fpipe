@@ -130,9 +130,14 @@ def get_gt(bi, gtgnu_file, gtps_file, l, t=None):
 
     fk    = ps_para[bi, 0, 1]
     alpha = ps_para[bi, 0, 2]
-    B     = ps_para[bi, 0, 3]
-    f0    = ps_para[bi, 0, 4]
-    w     = ps_para[bi, 0, 5]
+    if ps_para.shape[2] == 6:
+        B     = ps_para[bi, 0, 3]
+        f0    = ps_para[bi, 0, 4]
+        w     = ps_para[bi, 0, 5]
+    else:
+        B     = 0
+        f0    = 0
+        w     = 1
     #print '%02d: XX [%e, %e]  '%(bi+1, fk, alpha),
     pkf = None 
     #pkf = interp1d(bc, ps_result[:, 0], bounds_error=False, fill_value=0)
@@ -143,9 +148,14 @@ def get_gt(bi, gtgnu_file, gtps_file, l, t=None):
 
     fk    = ps_para[bi, 1, 1]
     alpha = ps_para[bi, 1, 2]
-    B     = ps_para[bi, 1, 3]
-    f0    = ps_para[bi, 1, 4]
-    w     = ps_para[bi, 1, 5]
+    if ps_para.shape[2] == 6:
+        B     = ps_para[bi, 1, 3]
+        f0    = ps_para[bi, 1, 4]
+        w     = ps_para[bi, 1, 5]
+    else:
+        B     = 0
+        f0    = 0
+        w     = 1
     gt_smooth_yy = destriping(l, gt_smooth[good[:, 1], 1],
             var[good[:, 1], 1], time[good[:, 1]], 
             fk, alpha, B, f0, w)(t)
@@ -199,7 +209,7 @@ def evaluate_cov_with_fn_realization(alpha, fk, B, f0, w,  time, pkf=None, N=100
         gamma = -alpha
         P = lambda f: (f/fk)**gamma + B / (1. + ((f - f0) / w )**2.)
     else:
-        print 'use evaluated pkf'
+        print('use evaluated pkf')
         P = pkf
 
     f_axis = np.fft.fftfreq( ntime, d=dtime)

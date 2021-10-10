@@ -92,7 +92,7 @@ class LogNormal(corr21cm.Corr21cm):
 
         psfile = join(dirname(__file__),"data/input_matterpower.dat")
         redshift = 0.2
-        print "loading matter power file: " + psfile
+        print("loading matter power file: " + psfile)
         pwrspec_data = np.genfromtxt(psfile)
         (log_k, log_pk) = (np.log(pwrspec_data[:,0]), \
                            np.log(pwrspec_data[:,1]))

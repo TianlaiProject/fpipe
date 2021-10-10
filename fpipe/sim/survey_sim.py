@@ -115,7 +115,7 @@ class SurveySim(pipeline.TaskBase):
                     self.HI_mock_ids = list(self.params['HI_mock_ids'])
                     _HI_model = _HI_model[self.HI_mock_ids]
                 else:
-                    self.HI_mock_ids = range(_HI_model.shape[0])
+                    self.HI_mock_ids = list(range(_HI_model.shape[0]))
 
                 self.mock_n = _HI_model.shape[0]
                 self.HI_model = al.make_vect(_HI_model)
@@ -125,7 +125,7 @@ class SurveySim(pipeline.TaskBase):
         else:
             self.mock_n = self.params['mock_n']
             freq  = self.params['freq']
-            self.HI_mock_ids = range(self.mock_n)
+            self.HI_mock_ids = list(range(self.mock_n))
 
         dfreq = freq[1] - freq[0]
         freq_n = freq.shape[0]
@@ -169,11 +169,11 @@ class SurveySim(pipeline.TaskBase):
         self.iter = 0
         self.iter_num = len(self.iter_list)
 
-    def next(self):
+    def __next__(self):
 
         if self.iter == self.iter_num:
             mpiutil.barrier()
-            super(SurveySim, self).next()
+            next(super(SurveySim, self))
 
         mock_n = self.mock_n
 
@@ -504,7 +504,7 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
                 hist = self.df_out[ii]['dirty_map'][:] 
                 norm[norm==0] = np.inf
                 self.df_out[ii]['clean_map'][:] = hist/norm
-            print 'Finishing CleanMapMaking.'
+            print('Finishing CleanMapMaking.')
 
         mpiutil.barrier()
         super(SurveySimToMap, self).finish()

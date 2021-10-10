@@ -178,7 +178,7 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     '''
     
     wb = load_workbook(coord_file)
-    datasheet = wb[u'\u6d4b\u91cf\u6570\u636e']
+    datasheet = wb['\u6d4b\u91cf\u6570\u636e']
     
     if max_row is None:
         max_row = datasheet.max_row
@@ -196,7 +196,7 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     data = [col for col in datasheet.iter_cols(min_col=data_col_min, max_col=data_col_max, 
                                                min_row=min_row, max_row=max_row,
                                                values_only=True)]
-    print 'read ant. coord %s %s %s'%(tuple([x[0] for x in data_name]))
+    print('read ant. coord %s %s %s'%(tuple([x[0] for x in data_name])))
 
     data = np.array(data)
     X = data[0]
@@ -216,7 +216,7 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
 def load_rotation_angle(coord_file, min_row=2, max_row=None):
 
     wb = load_workbook(coord_file)
-    datasheet = wb[u'\u6574\u63a7-\u9988\u6e90\u8231\u6570\u636e']
+    datasheet = wb['\u6574\u63a7-\u9988\u6e90\u8231\u6570\u636e']
     if max_row is None:
         max_row = datasheet.max_row
     time = [col for col in datasheet.iter_cols(min_col=1, max_col=1,
@@ -234,7 +234,7 @@ def load_rotation_angle(coord_file, min_row=2, max_row=None):
     data = [col for col in datasheet.iter_cols(min_col=data_col_min, max_col=data_col_max,
                                                min_row=min_row, max_row=max_row,
                                                values_only=True)]
-    print 'read ant. coord %s '%(tuple([x[0] for x in data_name]))
+    print('read ant. coord %s '%(tuple([x[0] for x in data_name])))
 
     data = np.array(data[0]) * 180./np.pi
 

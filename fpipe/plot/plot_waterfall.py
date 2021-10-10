@@ -94,7 +94,7 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
 
     for bi in range(19):
 
-        print "Feed%02d "%bi,
+        print("Feed%02d "%bi, end=' ')
 
         i = bi/4
         j = bi%4
@@ -112,13 +112,13 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
             ax.set_ylabel(r'$\nu$ [GHz]')
 
 
-    print
+    print()
     cax = axes[-1]
     fig.colorbar(im, cax=cax, orientation='horizontal')
     cax.set_xlabel(r'$T$ [K]')
     cax.set_title(title)
 
-    print 'output image'
+    print('output image')
 
     if output is not None:
         fig.savefig(output, formate='png', dpi=300)
@@ -244,19 +244,19 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
         bad_freq_list = self.params['bad_freq_list']
 
         if bad_time_list is not None:
-            print "Mask bad time"
+            print("Mask bad time")
             for bad_time in bad_time_list:
-                print bad_time
+                print(bad_time)
                 ts.vis_mask[slice(*bad_time), ...] = True
 
         if bad_freq_list is not None:
-            print "Mask bad freq"
+            print("Mask bad freq")
             for bad_freq in bad_freq_list:
-                print bad_freq
+                print(bad_freq)
                 ts.vis_mask[:, slice(*bad_freq), ...] = True
 
-        if 'flags' in ts.iterkeys() and self.params['flag_raw']:
-            print 'apply raw flags'
+        if 'flags' in iter(ts.keys()) and self.params['flag_raw']:
+            print('apply raw flags')
             ts.vis_mask[:] += ts['flags'][:]
 
         func(self.plot, full_data=True, show_progress=show_progress, 
@@ -268,7 +268,7 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
     def plot(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
 
         if vis.dtype == np.complex or vis.dtype == np.complex64:
-            print "take the abs of complex value"
+            print("take the abs of complex value")
             vis = np.abs(vis)
 
         flag_mask = self.params['flag_mask']
@@ -296,15 +296,15 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
 
 
         if flag_ns:
-            if 'ns_on' in ts.iterkeys():
-                print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+            if 'ns_on' in iter(ts.keys()):
+                print('Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1))
                 #vis1 = vis.copy()
                 #on = np.where(ts['ns_on'][:])[0]
                 #vis1[on] = complex(np.nan, np.nan)
                 on = ts['ns_on'][:, gi]
                 vis1.mask[on, ...] = True
             else:
-                print "No Noise Diode Mask info"
+                print("No Noise Diode Mask info")
 
         if self.params['plot_index']:
             y_axis = np.arange(ts.freq.shape[0])
@@ -319,7 +319,7 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
                 #print gi, li
                 x_axis = ts['ra'][:, gi]
                 x_label = 'R.A.' 
-                print 'RA range [%6.2f, %6.2f]'%( x_axis.min(), x_axis.max())
+                print('RA range [%6.2f, %6.2f]'%( x_axis.min(), x_axis.max()))
             else:
                 time = ts['sec1970'] #+ 
                 try:
@@ -355,7 +355,7 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
         if re_scale is not None:
             mean = np.ma.mean(vis1)
             std  = np.ma.std(vis1)
-            print mean, std
+            print(mean, std)
             vmax = mean + re_scale * std
             vmin = mean - re_scale * std
         else:
@@ -480,15 +480,15 @@ class PlotTimeStream(timestream_task.TimestreamTask):
         bad_freq_list = self.params['bad_freq_list']
 
         if bad_time_list is not None:
-            print "Mask bad time"
+            print("Mask bad time")
             for bad_time in bad_time_list:
-                print bad_time
+                print(bad_time)
                 ts.vis_mask[slice(*bad_time), ...] = True
 
         if bad_freq_list is not None:
-            print "Mask bad freq"
+            print("Mask bad freq")
             for bad_freq in bad_freq_list:
-                print bad_freq
+                print(bad_freq)
                 ts.vis_mask[:, slice(*bad_freq), ...] = True
 
         if self.params['nvss_cat'] is not None:
@@ -645,7 +645,7 @@ class PlotVvsTime(PlotTimeStream):
 
         #vis = np.abs(vis)
         if vis.dtype == np.complex or vis.dtype == np.complex64:
-            print "take the abs of complex value"
+            print("take the abs of complex value")
             vis = np.abs(vis)
 
         flag_mask = self.params['flag_mask']
@@ -665,8 +665,8 @@ class PlotVvsTime(PlotTimeStream):
             vis1.mask = np.zeros(vis1.shape, dtype='bool')
 
         if flag_ns:
-            if 'ns_on' in ts.iterkeys():
-                print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+            if 'ns_on' in iter(ts.keys()):
+                print('Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1))
                 #vis1 = vis.copy()
                 #on = np.where(ts['ns_on'][:])[0]
                 #vis1[on] = complex(np.nan, np.nan)
@@ -677,7 +677,7 @@ class PlotVvsTime(PlotTimeStream):
                 #on = ts['ns_on'][:]
                 vis1.mask[on, ...] = True
             else:
-                print "No Noise Diode Mask info"
+                print("No Noise Diode Mask info")
 
         if self.params['plot_index']:
             y_label = r'$\nu$ index'
@@ -693,7 +693,7 @@ class PlotVvsTime(PlotTimeStream):
                 #print gi, li
                 x_axis = ts['ra'][:, gi]
                 self.x_label = 'R.A.' 
-                print 'RA range %f - %f'%(x_axis.min(), x_axis.max())
+                print('RA range %f - %f'%(x_axis.min(), x_axis.max()))
             else:
                 time = ts['sec1970'] + ts.attrs['sec1970']
                 x_axis = [ datetime.fromtimestamp(s) for s in time]
@@ -822,7 +822,7 @@ class PlotNcalVSTime(PlotVvsTime):
 
         #vis = np.abs(vis)
         if vis.dtype == np.complex or vis.dtype == np.complex64:
-            print "take the abs of complex value"
+            print("take the abs of complex value")
             vis = np.abs(vis)
 
         flag_mask = self.params['flag_mask']
@@ -841,8 +841,8 @@ class PlotNcalVSTime(PlotVvsTime):
         if flag_mask:
             vis1.mask = vis_mask
 
-        if 'ns_on' in ts.iterkeys():
-            print 'Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1)
+        if 'ns_on' in iter(ts.keys()):
+            print('Uisng Noise Diode Mask for Ant. %03d'%(bl[0] - 1))
             if len(ts['ns_on'].shape) == 2:
                 on = ts['ns_on'][:, gi].astype('bool')
             else:
@@ -850,7 +850,7 @@ class PlotNcalVSTime(PlotVvsTime):
             #on = ts['ns_on'][:]
             vis1.mask[~on, ...] = True
         else:
-            print "No Noise Diode Mask info"
+            print("No Noise Diode Mask info")
 
         if self.params['plot_index']:
             y_label = r'$\nu$ index'
@@ -1003,7 +1003,7 @@ class PlotNoiseCal(PlotVvsTime):
         fig  = self.fig
 
         if self.params['noise_cal_init_time'] is not None:
-            print "plot noise diode"
+            print("plot noise diode")
             if self.params['plot_index']:
                 msg = 'noise diode need to plot in time, not index'
             else:
@@ -1014,7 +1014,7 @@ class PlotNoiseCal(PlotVvsTime):
                 #tp = 19.9915424299
 
                 if bl[0] - 1 in self.params['noise_cal_delayed_ant']:
-                    print "Cal delayed, t0 plus 1 s"
+                    print("Cal delayed, t0 plus 1 s")
                     t0 += 1
 
                 noise_st = np.arange(t0,      t1, tp)
@@ -1117,7 +1117,7 @@ class PlotSpectrum(PlotTimeStream):
         ymin      = self.params['ymin']
         ymax      = self.params['ymax']
 
-        print "global index %2d [m%03d]"%(gi, bl[0]-1)
+        print("global index %2d [m%03d]"%(gi, bl[0]-1))
         freq_indx = np.arange(vis.shape[1])
         freq = ts['freq'][:] * 1.e-3
         self.x_label = r'$\nu$ / GHz'
@@ -1127,13 +1127,13 @@ class PlotSpectrum(PlotTimeStream):
         bad_time = np.all(vis_mask, axis=(1, 2))
 
         if vis.dtype == 'complex' or vis.dtype == 'complex64':
-            print "Convert complex to float by abs"
+            print("Convert complex to float by abs")
             vis = np.abs(vis.copy())
 
         vis = np.ma.array(vis)
         vis.mask = vis_mask.copy()
         
-        if 'ns_on' in ts.iterkeys():
+        if 'ns_on' in iter(ts.keys()):
             ns_on = ts['ns_on'][:, gi]
         else:
             ns_on = np.zeros(bad_time.shape).astype('bool')
@@ -1251,13 +1251,13 @@ class CheckSpec(timestream_task.TimestreamTask):
         
         if bad_time_list is not None:
             for bad_time in bad_time_list:
-                print bad_time
+                print(bad_time)
                 ts.vis_mask[slice(*bad_time), ...] = True
 
         if bad_freq_list is not None:
-            print "Mask bad freq"
+            print("Mask bad freq")
             for bad_freq in bad_freq_list:
-                print bad_freq
+                print(bad_freq)
                 ts.vis_mask[:, slice(*bad_freq), ...] = True
 
         ts.redistribute('baseline')
@@ -1285,7 +1285,7 @@ class CheckSpec(timestream_task.TimestreamTask):
         bad_freq = np.all(vis_mask, axis=(0, 2))
         bad_time = np.all(vis_mask, axis=(1, 2))
         
-        print "global index %2d [m%03d]"%(gi, bl[0]-1)
+        print("global index %2d [m%03d]"%(gi, bl[0]-1))
         freq_indx = np.arange(vis.shape[1])
         freq = ts['freq'][:]
         
@@ -1300,7 +1300,7 @@ class CheckSpec(timestream_task.TimestreamTask):
         #spec_HH = np.ma.mean(vis[:, :, 0], axis=0)
         #spec_VV = np.ma.mean(vis[:, :, 1], axis=0)
 
-        if 'ns_on' in ts.iterkeys():
+        if 'ns_on' in iter(ts.keys()):
             ns_on = ts['ns_on'][:, gi]
         else:
             ns_on = np.zeros(bad_time.shape).astype('bool')
@@ -1328,7 +1328,7 @@ class CheckSpec(timestream_task.TimestreamTask):
         #ax.plot(freq, spec_VV , 'r-', label='VV', linewidth=1.5)
         #ax.plot(freq, bp_VV , 'y-', linewidth=1.0)
 
-        if 'ns_on' in ts.iterkeys():
+        if 'ns_on' in iter(ts.keys()):
 
             vis.mask = vis_mask.copy()
             vis.mask[~ns_on] = True
@@ -1346,7 +1346,7 @@ class CheckSpec(timestream_task.TimestreamTask):
             dfreq =  freq[1] - freq[0]
             fs = float(ns_HH.shape[0])
             fc = 1./dfreq  # Cut-off frequency of the filter
-            print fc
+            print(fc)
             w = fc / (fs / 2.) # Normalize the frequency
             b, a = signal.butter(5, w, 'low')
             ns_HH_smooth = signal.filtfilt(b, a, ns_HH)

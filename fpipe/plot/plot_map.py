@@ -41,7 +41,7 @@ def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360),
 
     with h5.File(map_name, 'r') as f:
         if verbose:
-            print 'Load maps from %s'%map_name
+            print(('Load maps from %s'%map_name))
         #imap = f[map_key][indx]
         imap = al.load_h5(f, map_key)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
@@ -49,7 +49,7 @@ def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360),
         pixs = f['map_pix'][:]
         nside = f['nside'][()]
 
-        print f.keys()
+        print((list(f.keys())))
 
     freq = imap.get_axis('freq')
     freq = freq[indx[-1]]
@@ -323,7 +323,7 @@ def load_maps_npy(dm_path, dm_file):
 def load_maps(dm_path, dm_file, name='clean_map'):
 
     with h5.File(dm_path+dm_file, 'r') as f:
-        print f.keys()
+        print((list(f.keys())))
         imap = al.load_h5(f, name)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
         #imap = al.make_vect(al.load_h5(f, name))
@@ -359,7 +359,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             imap = al.load_h5(f, map_type)
             if print_info:
                 logger.info( ('%s '* len(keys))%keys )
-                print imap.info
+                print((imap.info))
             try:
                 mask = f['mask'][:].astype('bool')
             except KeyError:
@@ -447,7 +447,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
  
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
 
-    print vmin, vmax
+    print((vmin, vmax))
     
     
     fig = plt.figure(figsize=figsize)
@@ -496,10 +496,10 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             dec_idx = np.digitize(_dec[i], dec_edges) - 1
             ax.plot(ra[ra_idx], dec[dec_idx], 'wx', ms=10, mew=2)
             _c = SkyCoord(_ra[i] * u.deg, _dec[i] * u.deg)
-            print '%s [RA,Dec]:'%_id[i] \
+            print(('%s [RA,Dec]:'%_id[i] \
                     + '[%7.4fd'%_c.ra.deg \
                     + '(%dh%dm%6.4f) '%_c.ra.hms\
-                    + ': %7.4fd], FLUX %7.4f Jy'%(_c.dec.deg, _flx[i]/1000.)
+                    + ': %7.4fd], FLUX %7.4f Jy'%(_c.dec.deg, _flx[i]/1000.)))
     if not logscale:
         ticks = list(np.linspace(vmin, vmax, 5))
         ticks_label = []
@@ -532,7 +532,7 @@ def plot_map(data, indx = (), figsize=(10, 4),
     freq = data[5][indx[-1]]
     if isinstance( indx[-1], slice):
         freq = (freq[0], freq[-1])
-        print imap.shape
+        print((imap.shape))
         imap = np.ma.mean(imap, axis=0)
     else:
         freq = (freq, )
@@ -631,8 +631,8 @@ def plot_map(data, indx = (), figsize=(10, 4),
         _dec = nvss_cat['DEC'][_sel]
         _flx =  nvss_cat['FLUX_20_CM'][_sel]
         for i in range(np.sum(_sel)):
-            print '%s [RA,Dec]: [%7.4f : %7.4f], FLUX %7.4f Jy'%(
-                    _id[i], _ra[i], _dec[i], _flx[i]/1000.)
+            print(('%s [RA,Dec]: [%7.4f : %7.4f], FLUX %7.4f Jy'%(
+                    _id[i], _ra[i], _dec[i], _flx[i]/1000.)))
 
     if not logscale:
         ticks = list(np.linspace(vmin, vmax, 5))
@@ -672,7 +672,7 @@ def load_ps1d_opt(ps_path, ps_file):
 
     with h5.File(ps_path + ps_file , 'r') as f:
 
-        print f.keys()
+        print((list(f.keys())))
         ps1d_all = f['binavg_1d'][:]
         ps1d_kbin = f['kbin'][:]
     
@@ -735,7 +735,7 @@ def plot_1dps_old(ps_list, logk=True, figsize=(8,6), vmin=None, vmax=None):
 
 
     ns = ( 25. / np.sqrt(1. * 13.e6  * 2 * 16.) )**2.
-    print ns ** 0.5
+    print((ns ** 0.5))
 
     #ns_kh = np.logspace(-3, 2, 100)
     ns_kh = psin[:,0]
@@ -755,7 +755,7 @@ def plot_1dps_old(ps_list, logk=True, figsize=(8,6), vmin=None, vmax=None):
 def plot_1dps(ps_path, ps_name_list, figsize=(8,6), title='',
               vmin=None, vmax=None, logk=True, ns=25., cube_size=1.):
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ps_n = len(ps_keys)
     shift = np.arange(ps_n) - (float(ps_n) - 1.)/ 2.
     shift *= 0.5
@@ -804,7 +804,7 @@ def plot_1dps(ps_path, ps_name_list, figsize=(8,6), title='',
 def plot_2dps(ps_path, ps_name_list, figsize=(16, 4),title='',
              vmax=None, vmin=None, logk=True):
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     cols = len(ps_keys)
     fig = plt.figure(figsize=figsize)
     fig.suptitle(title)

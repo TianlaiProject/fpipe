@@ -98,7 +98,7 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
                 indx = self._indx_f(task_ind, self.map_shp[:-2])
 
             #print mpiutil.rank,  indx
-            print "RANK%03d: ("%mpiutil.rank + ("%04d, "*len(indx))%indx + ")"
+            print("RANK%03d: ("%mpiutil.rank + ("%04d, "*len(indx))%indx + ")")
 
             _dirty_map = np.zeros(map_shp, dtype=__dtype__)
             if diag_cov:
@@ -121,7 +121,7 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
 
     def finish(self):
         if mpiutil.rank0:
-            print 'Finishing CleanMapMaking.'
+            print('Finishing CleanMapMaking.')
 
 
         mpiutil.barrier()
@@ -300,7 +300,7 @@ class CleanMap_SplitRA(OneAndOne, mapbase.MultiMapBase):
 
         for input_file in self.input_files:
 
-            print input_file
+            print(input_file)
             self.open(input_file)
 
         self.map_tmp = al.make_vect(al.load_h5(self.df_in[0], 'dirty_map'))
@@ -355,7 +355,7 @@ class CleanMap_SplitRA(OneAndOne, mapbase.MultiMapBase):
             radec_slice = (slice(ra_st, ra_ed), slice(None))
             radec_slice_olap = (slice(ra_st_olap, ra_ed_olap), slice(None))
 
-            for loop_ind in xrange(loop_n):
+            for loop_ind in range(loop_n):
 
                 indx = _indx_f(loop_ind, self.map_shp[:-2])
                 logger.debug('RANK %03d: Loop idx '%mpiutil.rank\
@@ -378,7 +378,7 @@ class CleanMap_SplitRA(OneAndOne, mapbase.MultiMapBase):
 
     def finish(self):
         if mpiutil.rank0:
-            print 'Finishing CleanMapMaking.'
+            print('Finishing CleanMapMaking.')
 
 
         mpiutil.barrier()

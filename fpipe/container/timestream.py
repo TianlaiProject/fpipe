@@ -108,7 +108,7 @@ class FAST_Timestream(timestream.Timestream):
                     distributed_axis=self.main_data_dist_axis)
             memh5.copyattrs(attr_dict, self.main_data.attrs)
 
-            if self.main_data_name + '_mask' in self.keys():
+            if self.main_data_name + '_mask' in list(self.keys()):
                 mk = mpiarray.MPIArray(shp, axis=self.main_data_dist_axis, 
                         comm=self.comm, dtype=self[self.main_data_name + '_mask'].dtype)
                 mk.local_array[:, :, 0] = \
