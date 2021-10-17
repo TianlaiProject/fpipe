@@ -1,0 +1,59 @@
+# -*- mode: python; -*-
+#
+from fpipe.map import dirtymap_hp, cleanmap
+from fpipe.timestream.data_base import DATA_BASE as DB
+import os
+import numpy as np
+
+suffix = os.getenv('BAND')
+map_id = int(os.getenv('MAPID'))
+
+file_st = map_id + 1
+file_ed = file_st
+
+data_base = '/home/ycli/fanalysis/zhuming/'
+
+pipe_tasks = []
+pipe_outdir = data_base
+pipe_logging = 'info' #'debug' #'info'
+pipe_copy = False
+pipe_feedback = 0
+pipe_timing = True
+
+feed_select = range(1, 20)
+
+band_list = ['1050-1150MHz', '1150-1250MHz', '1250-1450MHz']
+file_st = 1
+file_ed = 4
+file_name = 'DEC+272127_decdriftwithangle'
+
+band = band_list[2]
+input_file = file_name + '-%04d-%04d_%s.h5'
+file_list = [input_file%(i, i, band) for i in range(file_st, file_ed+1)]
+
+
+file_temp = '%s/%s_arcdrift%04d-%04d%s.h5'
+input_files = [file_temp%(DATE, DATA, i, i, suffix)
+               for i in range(file_st, file_ed + 1)]
+
+pipe_tasks.append(dirtymap_hp.DirtyMap_healpix)
+pipe_tasks.append(cleanmap.CleanMap)
+
+dmh_input_files = ['rmbsl/%s'%f for f in input_files]
+dmh_output_files = ['map/dm_%s_%s'%(file_name, band), ]
+dmh_nside = 2048
+dmh_freq_select = (100, 130)
+dmh_feed_select = feed_select
+dmh_ra_range = [203, 237]
+dmh_dec_range = [27, 28]
+dmh_diag_cov = True
+dmh_tblock_len = 1800
+dmh_baseline_file = None
+dmh_save_localHI = True
+dmh_center_only = True
+
+cm_input_files   = ['map/dm_%s_%s_vis.h5'%(file_name, band), ]
+cm_output_files  = ['map/cm_%s_%s_vis.h5'%(file_name, band), ]
+cm_healpix = True
+cm_threshold = 500.
+
