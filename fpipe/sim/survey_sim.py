@@ -397,7 +397,8 @@ class SurveySim(pipeline.TaskBase):
             df.create_dataset('vis', data=vis, dtype = vis.dtype, shape = vis.shape)
             df['vis'].attrs['dimname'] = 'Time, Frequency, Polarization, Baseline'
 
-            df['pol'] = np.array(['hh', 'vv', 'hv', 'vh'])
+            # df['pol'] = np.array(['hh', 'vv', 'hv', 'vh'])
+            df['pol'] = np.string_(['hh', 'vv', 'hv', 'vh']) # np.string_ for python 3
             df['pol'].attrs['pol_type'] = 'linear'
             
             df['feedno'] = self.feedno
@@ -468,6 +469,8 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
 
     def write_to_file(self, vis, mock=0):
 
+        super(SurveySimToMap, self).write_to_file(vis, mock)
+
         block_time = self.block_time[:self.iter+1]
 
         block_n  = int(block_time[-1] / self.obs_int.to(u.s).value)
@@ -504,7 +507,7 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
                 hist = self.df_out[ii]['dirty_map'][:] 
                 norm[norm==0] = np.inf
                 self.df_out[ii]['clean_map'][:] = hist/norm
-            print 'Finishing CleanMapMaking.'
+            print('Finishing CleanMapMaking.')
 
         mpiutil.barrier()
         super(SurveySimToMap, self).finish()
@@ -703,6 +706,7 @@ class RealOBS(ScanMode):
 
     def generate_altaz(self):
 
+        import pdb; pdb.set_trace()
         block_time = []
 
         self.t_list   = []

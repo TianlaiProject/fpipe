@@ -41,7 +41,7 @@ class MapBase(object):
     def create_dataset(self, name, dset_shp, dset_info={}, dtype='f'):
 
         d = self.df.create_dataset(name, dset_shp, dtype=dtype)
-        for key, value in dset_info.iteritems():
+        for key, value in dset_info.items():
             d.attrs[key] = repr(value)
 
     def create_dataset_like(self, name, dset_tmp):
@@ -92,7 +92,7 @@ class MultiMapBase(object):
     def create_dataset(self, df_idx, name, dset_shp, dset_info={}, dtype='f'):
 
         d = self.df_out[df_idx].create_dataset(name, dset_shp, dtype=dtype)
-        for key, value in dset_info.iteritems():
+        for key, value in dset_info.items():
             d.attrs[key] = repr(value)
 
     def create_dataset_like(self, df_idx, name, dset_tmp):
