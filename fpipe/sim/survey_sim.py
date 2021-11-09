@@ -57,6 +57,7 @@ class SurveySim(pipeline.TaskBase):
             'T_rec' : 25., # K
 
             'freq' : np.linspace(950, 1350, 32), 
+            'dfreq' : None, 
 
             'FG' : None,
             'HI_model' : None,
@@ -127,7 +128,7 @@ class SurveySim(pipeline.TaskBase):
             freq  = self.params['freq']
             self.HI_mock_ids = range(self.mock_n)
 
-        dfreq = freq[1] - freq[0]
+        dfreq = self.params['dfreq'] or (freq[1] - freq[0])
         freq_n = freq.shape[0]
 
         _obs_int = (obs_int.to(u.second)).value
@@ -139,6 +140,8 @@ class SurveySim(pipeline.TaskBase):
             # global sky model in healpix format, NSIDE=512, in galactic coord,
             # and in unit of K
             self.syn_model = GSM.generate(freq).T
+            if len(self.syn_model.shape) == 1:
+                self.syn_model = self.syn_model[:, np.newaxis]
 
             if self.params['beam_file'] is not None:
                 _bd = np.loadtxt(self.params['beam_file'])
@@ -390,7 +393,8 @@ class SurveySim(pipeline.TaskBase):
             freq = self.params['freq']
             df.attrs['nfreq'] = freq.shape[0] # Number of Frequency Points
             df.attrs['freqstart'] = freq[0] # MHz; Frequency starts.
-            df.attrs['freqstep'] = freq[1] - freq[0] # MHz; Frequency step.
+            # df.attrs['freqstep'] = freq[1] - freq[0] # MHz; Frequency step.
+            df.attrs['freqstep'] = self.params['dfreq'] or (freq[1] - freq[0]) # MHz; Frequency step.
 
             # Data Array
             #df.create_dataset('vis', chunks = (10, 1024, 1, 4), data=vis,
@@ -439,7 +443,8 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
         params = self.params
         freq  = params['freq']
         self.n_freq = freq.shape[0]
-        self.freq_spacing = freq[1] - freq[0]
+        # self.freq_spacing = freq[1] - freq[0]
+        self.freq_spacing = self.params['dfreq'] or (freq[1] - freq[0])
         self.n_ra, self.n_dec = params['map_shape']
         self.map_shp = (self.n_freq, self.n_ra, self.n_dec)
         self.spacing = params['pixel_spacing']
@@ -463,6 +468,7 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
                 self.params['HI_scenario'], self.params['HI_model_type'])
             output_file = output_path(output_file, relative=True)
             self.allocate_output(output_file, 'w')
+            self.create_dataset_like(-1, 'model_map', map_tmp)
             self.create_dataset_like(-1, 'dirty_map', map_tmp)
             self.create_dataset_like(-1, 'clean_map', map_tmp)
             self.create_dataset_like(-1, 'count_map', map_tmp)
@@ -483,6 +489,17 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
 
         ra_bin_edges  = self.map_tmp.get_axis_edges('ra')
         dec_bin_edges = self.map_tmp.get_axis_edges('dec')
+
+        ra_grid = 0.5 * (ra_bin_edges[:-1] + ra_bin_edges[1:])
+        dec_grid = 0.5 * (dec_bin_edges[:-1] + dec_bin_edges[1:])
+        # ra_grid, dec_grid = np.meshgrid(ra_grid, dec_grid)
+        dec_grid, ra_grid = np.meshgrid(dec_grid, ra_grid)
+
+        c = SkyCoord(ra=ra_grid.flatten() * u.deg, dec=dec_grid.flatten() * u.deg, frame='icrs')
+        l = c.galactic.l.radian
+        b = c.galactic.b.radian
+        _idx_pix = hp.ang2pix(hp.npix2nside(self.syn_model.shape[0]), np.pi/2.0 - b, l, nest=False)
+        self.df_out[mock]['model_map'][:] += self.syn_model[_idx_pix, :].T.reshape(self.df_out[mock]['model_map'].shape)
 
         norm = np.histogram2d(ra.flatten(), dec.flatten(), 
                 bins=[ra_bin_edges, dec_bin_edges])[0] * 1.
