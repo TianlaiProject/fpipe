@@ -37,7 +37,8 @@ _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360), 
         pix=3./60., field_center=[(165, 27.8), ], proj='ZEA', figsize=(14, 2),
         sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
-        nvss_path=None, verbose=True, cbar=True, colors='r', logscale=False):
+        nvss_path=None, verbose=True, cbar=True, colors='r', logscale=False,
+        mK=False, muK=False):
 
     with h5.File(map_name, 'r') as f:
         if verbose:
@@ -55,6 +56,18 @@ def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360),
     freq = freq[indx[-1]]
     imap = imap[indx]
     imap = np.ma.masked_equal(imap, 0)
+
+    if mK:
+        if map_key == 'noise_diag':
+            imap *= 1.e6
+        else:
+            imap *= 1.e3
+    if muK:
+        if map_key == 'noise_diag':
+            imap *= 1.e12
+        else:
+            imap *= 1.e6
+
     if isinstance( indx[-1], slice):
         if map_key == 'noise_diag':
             imap = np.ma.mean(imap, axis=0)
