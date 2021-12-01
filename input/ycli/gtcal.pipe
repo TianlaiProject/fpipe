@@ -1,0 +1,87 @@
+# -*- mode: python; -*-
+#
+from fpipe.timestream import bandpass_cal, destripe, rm_baseline, freq_rebin
+from fpipe.timestream.data_base import DATA_BASE as DB
+
+import os
+
+#file_st = 1   #3  #13 #3 #1 #int(os.getenv('FILE_ST'))
+#file_ed = 7  #12 #23 #23 #10 #23 #file_st + 1
+file_st = int(os.getenv('ST'))
+file_ed = int(os.getenv('ED'))
+
+data_base = '/scratch3/users/ycli/fanalysis/'
+DATA_Key = os.getenv('DATAKey')
+
+DATA     = DB[DATA_Key]['DATA']
+DATE     = DB[DATA_Key]['DATE']
+DATE_CAL = DB[DATA_Key]['DATE_CAL']
+
+suffix = '%s_%s'%(DATE, DATA)
+
+file_list = ['%s/%s_arcdrift%04d-%04d'%(DATE, DATA, i, i) 
+                for i in range(file_st, file_ed + 1)]
+
+eta_A = '/idia/users/ycli/fdata/eta/eta_%s.h5'%DATE_CAL
+baseline = '/idia/users/ycli/fdata/baseline/%s_%s.h5'%(DATA, DATE)
+
+pipe_tasks = []
+pipe_outdir = data_base 
+#pipe_logging = 'error'
+pipe_logging = 'info'
+pipe_copy = False
+pipe_timing = True
+
+
+#pipe_tasks.append((destripe.TimeVar_Cal, 'gtcal1_'))
+##pipe_tasks.append((destripe.TimeVar_Cal, 'gtcal2_'))
+#pipe_tasks.append((destripe.TimeVar_Cal, 'gtcal3_'))
+
+pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA1_'))
+##pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA2_'))
+#pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA3_'))
+
+pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl1_'))
+#pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl2_'))
+#pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl3_'))
+
+gtcal1_input_files  = ['rb4_sumfeeds_nocal/%s_1050-1150MHz.h5'%f for f in file_list] 
+gtcal1_output_files = ['rb4_gtcal_sumfeeds/%s_1050-1150MHz.h5'%f for f in file_list] 
+gtcal1_gt_file = data_base + '/gtgnu/%s_NoInterp.h5'%suffix
+gtcal1_ps_file = data_base + '/gtps/%s.h5'%(suffix)
+
+gtcal2_input_files  = ['rb4_sumfeeds_nocal/%s_1150-1250MHz.h5'%f for f in file_list] 
+gtcal2_output_files = ['rb4_gtcal_sumfeeds/%s_1150-1250MHz.h5'%f for f in file_list] 
+gtcal2_gt_file = data_base + '/gtgnu/%s_NoInterp.h5'%suffix
+gtcal2_ps_file = data_base + '/gtps/%s.h5'%(suffix)
+
+gtcal3_input_files  = ['rb4_sumfeeds_nocal/%s_1250-1450MHz.h5'%f for f in file_list] 
+gtcal3_output_files = ['rb4_gtcal_sumfeeds/%s_1250-1450MHz.h5'%f for f in file_list] 
+gtcal3_gt_file = data_base + '/gtgnu/%s_NoInterp.h5'%suffix
+gtcal3_ps_file = data_base + '/gtps/%s.h5'%(suffix)
+gtcal3_freq_select = (2400, None)
+#gtcal3_freq_select = (9600, None)
+
+etaA1_input_files  = gtcal1_output_files 
+etaA1_output_files = ['rb4_etaA_sumfeeds/%s_1050-1150MHz.h5'%f for f in file_list] 
+etaA1_eta_A = eta_A 
+
+etaA2_input_files  = gtcal2_output_files 
+etaA2_output_files = ['rb4_etaA_sumfeeds/%s_1150-1250MHz.h5'%f for f in file_list] 
+etaA2_eta_A = eta_A 
+
+etaA3_input_files  = gtcal3_output_files 
+etaA3_output_files = ['rb4_etaA_sumfeeds/%s_1250-1450MHz.h5'%f for f in file_list] 
+etaA3_eta_A = eta_A 
+
+rmbsl1_input_files  = etaA1_output_files
+rmbsl1_output_files = ['rb4_rmbsl_sumfeeds/%s_1050-1150MHz.h5'%f for f in file_list] 
+rmbsl1_baseline_file = baseline
+
+rmbsl2_input_files  = etaA2_output_files
+rmbsl2_output_files = ['rb4_rmbsl_sumfeeds/%s_1150-1250MHz.h5'%f for f in file_list] 
+rmbsl2_baseline_file = baseline
+
+rmbsl3_input_files  = etaA3_output_files
+rmbsl3_output_files = ['rb4_rmbsl_sumfeeds/%s_1250-1450MHz.h5'%f for f in file_list] 
+rmbsl3_baseline_file = baseline

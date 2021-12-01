@@ -170,7 +170,7 @@ def beam_axes():
     return fig2, ax2
 
 
-def xyz2azalt(coord_file, min_row=2, max_row=None):
+def xyz2azalt(coord_file, min_row=2, max_row=None, debug=False):
     '''
 
     convert the antenna xyz to az alt
@@ -179,7 +179,9 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     
     wb = load_workbook(coord_file)
     datasheet = wb[u'\u6d4b\u91cf\u6570\u636e']
-    
+    data_col_min =  20
+    data_col_max =  22
+
     if max_row is None:
         max_row = datasheet.max_row
     time = [col for col in datasheet.iter_cols(min_col=1, max_col=1, 
@@ -188,8 +190,6 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     time = np.array(time).flatten()
     time = Time(time) - 8. * u.hour # convert from Bejing time to UTC
     
-    data_col_min = 20
-    data_col_max = 22
     data_name = [col for col in datasheet.iter_cols(min_col=data_col_min, max_col=data_col_max, 
                                                     min_row=1, max_row=1,
                                                     values_only=True)]
@@ -199,10 +199,12 @@ def xyz2azalt(coord_file, min_row=2, max_row=None):
     print 'read ant. coord %s %s %s'%(tuple([x[0] for x in data_name]))
 
     data = np.array(data)
-    X = data[0]#.astype('float64')
-    Y = data[1]#.astype('float64')
-    Z = data[2]#.astype('float64')
-    print(time[0].fits, X[0], Y[0], Z[0])
+    X = data[0].astype('float64')
+    Y = data[1].astype('float64')
+    Z = data[2].astype('float64')
+    if debug:
+        #print( X[0], Y[0], Z[0])
+        print("%s: X %.20f, Y %.20f, Z %.20f"%(time[0].fits, X[0], Y[0], Z[0]))
 
     # alt = 90. - za
     sinalt = -Z / np.sqrt(X**2 + Y**2 + Z**2)

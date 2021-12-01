@@ -290,16 +290,22 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
         #w = w ** 2.
         #w = w / np.sum(w, axis=0)[None, :]
 
-        #w = np.sqrt((pix_ra - ra[None, :]) ** 2 + (pix_dec - dec[None, :]) ** 2)
         w = (np.sin(pix_dec * np.pi/180.) * np.sin(dec[None, :] * np.pi/180.))\
           + (np.cos(pix_dec * np.pi/180.) * np.cos(dec[None, :] * np.pi/180.))\
           * (np.cos((pix_ra - ra[None, :]) * np.pi/180.))
         w = np.arccos(w) * 180. / np.pi
 
+        # Beam profile weighting
         w = np.exp(-0.5 * (w ** 2) / beam_sig**2 )
+        #w *= 1./(2 * np.pi * beam_sig**2)
         w[w<0.001] = 0.
+        w = w / np.max(w, axis=0)[None, :]
+
+        # GBT weighting
+        #w = 1. - w / pix_size
+        ##w = w ** 2.
+        #w[w<0.001] = 0.
         #w = w / np.max(w, axis=0)[None, :]
-        #w = w / np.sum(w, axis=0)[None, :]
 
         P = np.zeros(ra.shape + pix_axis.shape, dtype=__dtype__ )
         for ii in range(9):
@@ -309,17 +315,19 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
 
 
     vis_var[vis_var==0] = np.inf #T_infinity ** 2.
-    noise_inv_weight = 1. /vis_var
+    noise_inv_weight = 1./vis_var
 
     weight = noise_inv_weight
 
     logger.debug('est. dirty map')
-    dirty_map += np.dot(P.T, vis_one * weight)
+    #dirty_map += np.dot(P.T * weight[None, :], vis_one)
+    dirty_map += np.dot(P.T, weight * vis_one)
 
     logger.debug('est. noise inv')
     if diag_cov:
         #cov_inv_block += np.diag(multi_dot([P.T, weight, P]))
         cov_inv_block += np.dot(P.T**2., weight)
+        #cov_inv_block += np.diag(np.dot(P.T* weight[None, :], P))
     else:
         weight = np.eye(vis_one.shape[0]) * weight
         cov_inv_block += multi_dot([P.T, weight, P])
