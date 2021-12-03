@@ -23,8 +23,8 @@ import gc
 
 logger = logging.getLogger(__name__)
 
-from meerKAT_utils.constants import T_infinity, T_huge, T_large, T_medium, T_small, T_sys
-from meerKAT_utils.constants import f_medium, f_large
+from fpipe.utils.constants import T_infinity, T_huge, T_large, T_medium, T_small, T_sys
+from fpipe.utils.constants import f_medium, f_large
 
 __dtype__ = 'float32'
 
