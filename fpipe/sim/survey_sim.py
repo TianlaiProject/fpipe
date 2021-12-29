@@ -584,7 +584,7 @@ class ScanMode(object):
 
         px, py = beampointing
 
-        logger.info('Generating ra dec form multibeam')
+        logger.info('Generating ra dec from multibeam')
         self.ra_list, self.dec_list = mb.get_pointing_meridian_scan(
                 _t_list, _alt, _az, self.location, px, py)
 
@@ -723,7 +723,6 @@ class RealOBS(ScanMode):
 
     def generate_altaz(self):
 
-        import pdb; pdb.set_trace()
         block_time = []
 
         self.t_list   = []

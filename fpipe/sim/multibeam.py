@@ -89,7 +89,8 @@ def get_pointing_meridian_scan(time, alt, az, location, x_position, y_position,
     separation = np.sqrt(x_position ** 2 + y_position ** 2) * u.arcmin
     position_angle  = np.arctan2(x_position, -y_position) * u.rad
 
-    _c = offset_by(c0[:, None], position_angle[None, :], separation[None, :])
+    # _c = offset_by(c0[:, None], position_angle[None, :], separation[None, :])
+    _c = offset_by(c0[:, None], position_angle.values.value[None, :], np.radians(separation.values.value[None, :] / 60.0))
 
     #return _c.ra.deg, _c.dec.deg
     if altaz:
