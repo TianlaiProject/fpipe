@@ -20,6 +20,7 @@ from matplotlib import cm
 
 from astropy import units as u
 import matplotlib.dates as mdates
+from matplotlib import gridspec
 from datetime import datetime, timedelta
 
 from scipy.optimize import least_squares, curve_fit
@@ -372,6 +373,7 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
         bandpass_combined = f['bandpass'][:]
         freq     = f['freq'][:]
         time_list = f['time'][:]
+        print freq[0], freq[-1], freq[1] - freq[0]
 
     bandpass_ref = np.median(bandpass_combined, axis=0)
     bandpass_ref = medfilt(bandpass_ref, [1, 201, 1])
@@ -391,9 +393,10 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
             #if bandpass_ref is None:
             #    bandpass_ref = bandpass_smooth.copy()
             bandpass_smooth /= bandpass_ref.copy()
-            ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+            #ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+            ylabel = r'$\gamma(\nu, t_b)$'
         else:
-            ylabel = r'$g(\nu, t)$'
+            ylabel = r'$\hat{g}(\nu, t_b)$'
         
         for b in range(19):
             i = b / 4
@@ -405,7 +408,7 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
             ax.set_xlim(freq.min(), freq.max())
 
             if ii == 0:
-                ax.text(0.70, 0.9, 'Feed%02d %s'%(b, _pol), transform=ax.transAxes)
+                ax.text(0.70, 0.85, 'Feed%02d %s'%(b, _pol), transform=ax.transAxes)
             
             if i != 4:
                 ax.set_xticklabels([])
@@ -448,7 +451,7 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
         
 def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
                       ymin=None, ymax=None, normalize=True, ratio=True, 
-                      output_path=None):
+                      output_path=None, freq_sel = (0, 2000)):
     
     
     _pol = ['XX', 'YY'][pol]
@@ -465,9 +468,11 @@ def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
     bandpass_ref = None
     time_list = []
 
-    with h5.File(bandpass_path + bandpass_name + '.h5', 'r') as f:
+    with h5.File(bandpass_path + 'bandpass_' + bandpass_name + '.h5', 'r') as f:
         bandpass_combined = f['bandpass'][:]
         freq     = f['freq'][:]
+        freq_sel = ( freq >= freq_sel[0] ) * ( freq < freq_sel[1] )
+        freq = freq[freq_sel]
         time_list = f['time'][:]
     
     #print bandpass_combined.shape
@@ -487,11 +492,11 @@ def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
                 bandpass_ref = bandpass_smooth.copy()
             #print bandpass_ref.min(), bandpass_ref.max()
             bandpass_smooth /= bandpass_ref.copy()
-            ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+            ylabel = r'$\gamma(\nu, t_b)$'
         else:
-            ylabel = r'$g(\nu, t)$'
+            ylabel = r'$\hat{g}(\nu, t_b)$'
 
-        ax.plot(freq, bandpass_smooth[b, :, pol], c=cm.jet(cnorm(ii)), 
+        ax.plot(freq, bandpass_smooth[b, :, pol][freq_sel], c=cm.jet(cnorm(ii)), 
                 lw=0.8)
 
         ax.set_ylim(ymin, ymax)
@@ -509,7 +514,7 @@ def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
         #bandpass_combined = medfilt(bandpass_combined, [1, 201, 1])
         if normalize:
             bandpass_combined /= np.median(bandpass_combined, axis=1)[:, None, :]
-        ax.plot(freq, bandpass_combined[b, :, pol], c='k', lw=1.0)
+        ax.plot(freq, bandpass_combined[b, :, pol][freq_sel], c='k', lw=1.0)
 
     ##print time_list
     #time_list -= time_list[0]

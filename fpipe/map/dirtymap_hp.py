@@ -299,7 +299,8 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
         w = np.exp(-0.5 * (w ** 2) / beam_sig**2 )
         #w *= 1./(2 * np.pi * beam_sig**2)
         w[w<0.001] = 0.
-        w = w / np.max(w, axis=0)[None, :]
+        #w = w / np.max(w, axis=0)[None, :]
+        w = w / np.sum(w, axis=0)[None, :]
 
         # GBT weighting
         #w = 1. - w / pix_size

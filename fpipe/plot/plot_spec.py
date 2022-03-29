@@ -45,14 +45,14 @@ def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100,
         spec_list = []
         for imap_info in imap_info_list:
 
-            _r = source.get_map_spec(imap_info, _s[3], _s[4], 
-                    beam_size=beam_size, mJy=True)
+            _r = source.get_map_spec(imap_info, _s[3], _s[4], mJy=True)
             if _r is not None:
                 freq, spec, p_ra, p_dec, error = _r
+                print spec.shape
             else:
                 continue
             spec = np.ma.masked_equal(spec, 0)
-            if not (np.all(spec.mask) or spec.shape[1] == 0):
+            if not (np.all(spec.mask) or spec.shape[0] == 0):
                 spec_list.append([freq, spec])
 
                 ymax = max(ymax, np.ma.median(spec) * 1.5)

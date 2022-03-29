@@ -31,7 +31,7 @@ ra_list = np.linspace(9, 13, 8)
 
 #map_prefix = 'map_%02d'%map_id
 #map_prefix = 'map_df28k_sumfeeds_CC_centeronly'
-map_prefix = 'map_df28k_sumfeeds_CC_B3arcmin'
+map_prefix = 'map_df28k_sumfeeds_CC_fullcov'
 ra_st = ra_list[map_id] * 15 - 0.3
 ra_ed = ra_list[map_id+1] * 15 + 0.3
 
@@ -52,23 +52,26 @@ pipe_tasks.append(cleanmap.CleanMap)
 #dmh_input_files = ['rb4_sumfeeds/%s'%f for f in input_files]
 #dmh_input_files = ['rb4_sumfeeds_CorrectCoord/%s'%f for f in input_files]
 #dmh_input_files = ['rb4_rmbsl_sumfeeds/%s'%f for f in input_files]
-dmh_input_files = ['rb4_rmbsl_sumfeeds_CC/%s'%f for f in input_files]
+
+#dmh_input_files = ['rb4_rmbsl_sumfeeds_CC/%s'%f for f in input_files]
+dmh_input_files = ['rb4_sumfeeds_CorrectCoord/%s'%f for f in input_files]
 dmh_output_files = ['%s/dm_%02d_%s_%s%s'%(map_prefix, map_id, DATA, DATE, suffix), ]
 dmh_nside = 2048
-dmh_freq_select = (0, None)
-#dmh_freq_select = (1000, 1010)
+#dmh_freq_select = (0, None)
+dmh_freq_select = (3000, 3010)
 dmh_feed_select = feed_select
 dmh_ra_range = [ra_st, ra_ed]
 dmh_dec_range = [25.5, 27.5]
-dmh_diag_cov = True
+dmh_diag_cov = False
 dmh_tblock_len = 1800
 dmh_baseline_file = None
 dmh_save_localHI = True
 dmh_center_only = False
-#dmh_beam_data_path = '/users/ycli/code/fpipe/fpipe/data/fwhm.dat'
-dmh_beam_fwhm_at21cm = 3./60.
+dmh_beam_data_path = '/users/ycli/code/fpipe/fpipe/data/fwhm.dat'
+#dmh_beam_fwhm_at21cm = 3./60.
 
 cm_input_files = ['%s/dm_%02d_%s_%s%s_vis.h5'%(map_prefix, map_id, DATA, DATE, suffix), ]
 cm_output_files  = ['%s/cm_%02d_%s_%s%s_vis.h5'%(map_prefix, map_id, DATA, DATE, suffix), ]
 cm_healpix = True
-cm_threshold = 500.
+cm_threshold = 1.e-1 #500.
+cm_diag_cov = False

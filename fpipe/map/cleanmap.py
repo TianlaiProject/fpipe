@@ -151,19 +151,36 @@ def make_cleanmap(dirty_map, cov_inv_block, diag_cov=False, threshold=1.e-5):
         else:
             cov_inv_diag_min = cov_inv_diag[cov_inv_diag!=0].min()
             logger.info('cov inv diag max %e, min %e'%(cov_inv_diag_max, cov_inv_diag_min))
-            #cov_inv_diag[cov_inv_diag!=0] = cov_inv_diag_max * 0.1
-            cov_inv_diag[:] = cov_inv_diag_max * threshold
-            #cov_inv_diag[:] = threshold
 
-            cov_inv_block += np.eye(np.prod(map_shp)) * cov_inv_diag[:, None]
+            #cov_inv_diag[:] = cov_inv_diag_max * threshold
+            #cov_inv_block += np.eye(np.prod(map_shp)) * cov_inv_diag[:, None]
+            #noise = linalg.inv(cov_inv_block)
+
             #noise = linalg.pinv(cov_inv_block, rcond=threshold)
-            noise = linalg.inv(cov_inv_block)
-            noise[cov_inv_bad] = 0.
 
-        clean_map = np.dot(noise, dirty_map)
-        noise_diag = np.diag(noise)
+            #noise[cov_inv_bad] = 0.
+            #clean_map = np.dot(noise, dirty_map)
+            #noise_diag = np.diag(noise)
+            #del noise
 
-        del noise
+            noise_inv_diag, Rot = linalg.eigh(cov_inv_block)
+            clean_map = np.dot(Rot.T, dirty_map)
+            min_modes = threshold * noise_inv_diag.max()
+            bad_modes = noise_inv_diag < min_modes
+            msg = "discarded %4.1f "%(100.*np.sum(bad_modes)/bad_modes.size) \
+                + r"% of modes"
+            logger.info(msg)
+            clean_map[bad_modes] = 0.
+            noise_inv_diag[bad_modes] = np.inf
+            clean_map = clean_map / noise_inv_diag
+            clean_map = np.dot(Rot, clean_map)
+            #noise_diag = np.dot(Rot, np.dot(Rot.T, 1./noise_inv_diag))
+            noise_diag = 1. / noise_inv_diag
+            temp = Rot * noise_diag
+            for ii in range(noise_diag.shape[0]):
+                noise_diag[ii] = np.dot(temp[ii, :], Rot[ii, :])
+
+        del cov_inv_block
         gc.collect()
 
     clean_map.shape = map_shp

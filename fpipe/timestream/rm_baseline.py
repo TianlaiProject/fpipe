@@ -37,6 +37,7 @@ class Remove_Baseline(timestream_task.TimestreamTask):
                 show_progress=show_progress, 
                 progress_step=progress_step, keep_dist_axis=False)
 
+        #print ts.vis[:10, 50, :, 0]
         return super(Remove_Baseline, self).process(ts)
 
     def cal_data(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
@@ -45,15 +46,21 @@ class Remove_Baseline(timestream_task.TimestreamTask):
         on = on.astype('bool')
 
         time = ts['sec1970'][:]
+        _mask = vis == 0
         bsl = fit_baseline(vis[~on], time[~on], vis_mask[~on], 
                 self.params['baseline_file'])
 
         vis[~on] -= bsl
+        vis[vis_mask] = 0.
+        vis[_mask] = 0.
 
         _vis = np.ma.array(vis, mask=vis_mask)
         _vis.mask += on[:, None, None]
 
-        vis -= np.ma.median(_vis, axis=0)
+        vis -= np.ma.median(_vis, axis=0)[None, :, :]
+
+        vis[vis_mask] = 0.
+        vis[_mask] = 0.
 
 def fit_baseline(vis, time, vis_mask, baseline_file):
 
