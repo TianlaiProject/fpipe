@@ -4,6 +4,7 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib import cm
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as mpatches
 
@@ -223,6 +224,75 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
     if output is not None:
         fig.savefig(output, formate='png', dpi=200)
 
+def plot_fwhm_days2(result_path, key_list_dict, fwhm_model=None, pol=0, 
+        fmin=None, fmax=None, output=None):
+
+    _p = ['XX', 'YY']
+
+    fig, axes = axes_utils.setup_axes(5, 4, colorbar=False)
+
+    if fmin is None: xmin = 1.e10
+    if fmax is None: xmax =-1.e10
+
+
+    legend_list = []
+    color=iter(cm.tab20(np.linspace(0,1,19)))
+    for date in key_list_dict.keys():
+        _c = next(color)
+
+        key_list = key_list_dict[date]
+        for beam in range(1, 20):
+            path = result_path + '%s/FWHM_F%02d.h5'%(date, beam)
+
+            with h5.File(path, 'r') as f:
+                fwhm = f['fwhm'][:]
+                freq = f['freq'][:]
+
+            ax = axes[beam-1]
+            ax.plot(freq/1.e3, fwhm[:, pol], color=_c, lw=0.1)
+
+            if fmin is None:
+                if freq.min()/1.e3 < xmin: xmin=freq.min()/1.e3
+            if fmax is None:
+                if freq.max()/1.e3 > xmax: xmax=freq.max()/1.e3
+
+        legend_list.append(mpatches.Patch(color=_c,
+                                          label=r'%s'%date.replace('_', ' ')))
+
+    if fwhm_model is not None:
+        data = np.loadtxt(fwhm_model)
+        f = data[:, 0] * 1.e-3
+        d = data[:, 1:]
+
+    if fmin is None: fmin=xmin
+    if fmax is None: fmax=xmax
+    for bi in range(19):
+        ii = bi / 4
+        jj = bi % 4
+
+        ax = axes[bi]
+        if fwhm_model is not None:
+            ax.plot(f, d[:, bi], 'k.-', lw=0.2)
+        ax.text(0.8, 0.85, 'Feed%02d'%(bi+1), transform=ax.transAxes)
+
+        ax.set_xlim(fmin, fmax)
+        ax.set_ylim(2.6, 3.9)
+
+        if ii == 4:
+            ax.set_xlabel('Frequency [GHz]')
+        else:
+            ax.set_xticklabels([])
+
+        if jj == 0:
+            ax.set_ylabel(r'$\theta_{\rm FWHM}$')
+        else:
+            ax.set_yticklabels([])
+
+    fig.legend(handles=legend_list, title = '%s Polarization'%_p[pol],
+               frameon=False, loc=4, bbox_to_anchor=(0.94, 0.10), ncol=2)
+
+    if output is not None:
+        fig.savefig(output, formate='png', dpi=200)
 
 def plot_fwhm_days(result_path, key_list_dict, beam_list,
                    band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
@@ -245,6 +315,11 @@ def plot_fwhm_days(result_path, key_list_dict, beam_list,
                                          beam_list, band_list):
 
             A, mu, fwhm, sigma2, freq = abs_cal.load_fitting_params(path)
+            #print path
+            #with h5.File(path, 'r') as f:
+            #    print f.keys()
+            #    fwhm = f['fwhm'][:]
+            #    freq = f['freq'][:]
 
             ax = axes[beam-1]
             ax.plot(freq/1.e3, fwhm[:, pol], color=_c_list[ci], lw=0.1)

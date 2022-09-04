@@ -37,51 +37,51 @@ pipe_timing = True
 ##pipe_tasks.append((destripe.TimeVar_Cal, 'gtcal2_'))
 #pipe_tasks.append((destripe.TimeVar_Cal, 'gtcal3_'))
 
-pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA1_'))
+#pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA1_'))
 ##pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA2_'))
 #pipe_tasks.append((bandpass_cal.Apply_EtaA, 'etaA3_'))
 
-pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl1_'))
+#pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl1_'))
 #pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl2_'))
-#pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl3_'))
+pipe_tasks.append((rm_baseline.Remove_Baseline, 'rmbsl3_'))
 
 gtcal1_input_files  = ['rb4_sumfeeds_nocal/%s_1050-1150MHz.h5'%f for f in file_list] 
-gtcal1_output_files = ['rb4_gtcal_sumfeeds/%s_1050-1150MHz.h5'%f for f in file_list] 
+gtcal1_output_files = ['rb4_gtcal_sumfeeds_l20/%s_1050-1150MHz.h5'%f for f in file_list] 
 gtcal1_gt_file = data_base + '/gtgnu/%s_NoInterp.h5'%suffix
 gtcal1_ps_file = data_base + '/gtps/%s.h5'%(suffix)
 
 gtcal2_input_files  = ['rb4_sumfeeds_nocal/%s_1150-1250MHz.h5'%f for f in file_list] 
-gtcal2_output_files = ['rb4_gtcal_sumfeeds/%s_1150-1250MHz.h5'%f for f in file_list] 
+gtcal2_output_files = ['rb4_gtcal_sumfeeds_l20/%s_1150-1250MHz.h5'%f for f in file_list] 
 gtcal2_gt_file = data_base + '/gtgnu/%s_NoInterp.h5'%suffix
 gtcal2_ps_file = data_base + '/gtps/%s.h5'%(suffix)
 
 gtcal3_input_files  = ['rb4_sumfeeds_nocal/%s_1250-1450MHz.h5'%f for f in file_list] 
-gtcal3_output_files = ['rb4_gtcal_sumfeeds/%s_1250-1450MHz.h5'%f for f in file_list] 
+gtcal3_output_files = ['rb4_gtcal_sumfeeds_l20/%s_1250-1450MHz.h5'%f for f in file_list] 
 gtcal3_gt_file = data_base + '/gtgnu/%s_NoInterp.h5'%suffix
 gtcal3_ps_file = data_base + '/gtps/%s.h5'%(suffix)
 gtcal3_freq_select = (2400, None)
 #gtcal3_freq_select = (9600, None)
 
 etaA1_input_files  = gtcal1_output_files 
-etaA1_output_files = ['rb4_etaA_sumfeeds/%s_1050-1150MHz.h5'%f for f in file_list] 
+etaA1_output_files = ['rb4_etaA_sumfeeds_l20/%s_1050-1150MHz.h5'%f for f in file_list] 
 etaA1_eta_A = eta_A 
 
 etaA2_input_files  = gtcal2_output_files 
-etaA2_output_files = ['rb4_etaA_sumfeeds/%s_1150-1250MHz.h5'%f for f in file_list] 
+etaA2_output_files = ['rb4_etaA_sumfeeds_l20/%s_1150-1250MHz.h5'%f for f in file_list] 
 etaA2_eta_A = eta_A 
 
 etaA3_input_files  = gtcal3_output_files 
-etaA3_output_files = ['rb4_etaA_sumfeeds/%s_1250-1450MHz.h5'%f for f in file_list] 
+etaA3_output_files = ['rb4_etaA_sumfeeds_l20/%s_1250-1450MHz.h5'%f for f in file_list] 
 etaA3_eta_A = eta_A 
 
 rmbsl1_input_files  = etaA1_output_files
-rmbsl1_output_files = ['rb4_rmbsl_sumfeeds/%s_1050-1150MHz.h5'%f for f in file_list] 
+rmbsl1_output_files = ['rb4_rmbsl_sumfeeds_l20/%s_1050-1150MHz.h5'%f for f in file_list] 
 rmbsl1_baseline_file = baseline
 
 rmbsl2_input_files  = etaA2_output_files
-rmbsl2_output_files = ['rb4_rmbsl_sumfeeds/%s_1150-1250MHz.h5'%f for f in file_list] 
+rmbsl2_output_files = ['rb4_rmbsl_sumfeeds_l20/%s_1150-1250MHz.h5'%f for f in file_list] 
 rmbsl2_baseline_file = baseline
 
 rmbsl3_input_files  = etaA3_output_files
-rmbsl3_output_files = ['rb4_rmbsl_sumfeeds/%s_1250-1450MHz.h5'%f for f in file_list] 
+rmbsl3_output_files = ['rb4_rmbsl_sumfeeds_l20/%s_1250-1450MHz.h5'%f for f in file_list] 
 rmbsl3_baseline_file = baseline

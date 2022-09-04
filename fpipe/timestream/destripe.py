@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 from fpipe.container.timestream import FAST_Timestream
 
 from fpipe.timestream import bandpass_cal
+from scipy.ndimage import gaussian_filter1d
 
 import matplotlib.pyplot as plt
 
@@ -21,7 +22,7 @@ class TimeVar_Cal(timestream_task.TimestreamTask):
             'ps_file' : None,
             'fk' : 0.01,
             'alpha' : 1.5,
-            'l' : 10,
+            'l' : 20,
             }
 
     prefix = 'gtcal_'
@@ -60,6 +61,7 @@ class TimeVar_Cal(timestream_task.TimestreamTask):
         time = ts['sec1970'][:]
 
         gt_smooth = get_gt(bl[0]-1, gt_file, ps_file, l, time)[-1]
+        gt_smooth = gaussian_filter1d(gt_smooth, sigma=40, axis=0)
         gt_xx = gt_smooth[:, 0]
         gt_yy = gt_smooth[:, 1]
 
@@ -118,15 +120,16 @@ def get_gt(bi, gtgnu_file, gtps_file, l, t=None):
     nd = np.ma.masked_invalid(nd)
 
     gt = np.ma.median(nd[:, :, :, bi], axis=1)
-    var = np.ma.var(nd[:, :, :, bi], axis=1)
+    var = np.ma.var(nd[:, :, :, bi], axis=1)#.data
 
     gt_m = np.ma.median(gt, axis=0)
     gt_s = np.ma.std(gt, axis=0)
-    gt_smooth =  gt.copy() - gt_m[None, :]
+    gt_smooth =  (gt.copy() - gt_m[None, :])#.data
 
     good = np.abs(gt_smooth) - 6.*gt_s[None, :] < 0.
-    gt = np.ma.array(gt, mask=False)
+    #gt = np.ma.array(gt, mask=False)
     gt.mask += ~good
+    good = ~gt.mask
 
     fk    = ps_para[bi, 0, 1]
     alpha = ps_para[bi, 0, 2]
@@ -254,7 +257,8 @@ def destriping(l, vis, var, time, fk, alpha, B, f0, w, pkf=None):
     else:
         a = (F.T * N * F).I * F.T * N * Zy
         
-    return interp1d(time, (F*a).flatten(), bounds_error=False, fill_value='extrapolate')
+    return interp1d(time, (F*a).flatten(), kind='linear', bounds_error=False, 
+            fill_value='extrapolate')
 
 def est_gain(input_files, beam=0, freq_idx=slice(0, None)):
 
