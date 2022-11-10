@@ -121,7 +121,7 @@ def plot_wf(file_list, title='', pol=0, vmax=None, vmin=None, output=None):
     print('output image')
 
     if output is not None:
-        fig.savefig(output, formate='png', dpi=300)
+        fig.savefig(output, format='png', dpi=300)
 
     fig.clf()
 
@@ -367,8 +367,8 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
         axvv = fig.add_axes([0.10, 0.10, 0.75, 0.40])
         cax  = fig.add_axes([0.86, 0.20, 0.02, 0.60])
 
-        im = axhh.pcolormesh(x_axis, y_axis, vis1[:,:,0].T, vmax=vmax, vmin=vmin)
-        im = axvv.pcolormesh(x_axis, y_axis, vis1[:,:,1].T, vmax=vmax, vmin=vmin)
+        im = axhh.pcolormesh(x_axis, y_axis, vis1[:,:,0].T, vmax=vmax, vmin=vmin, shading='nearest', cmap='turbo')
+        im = axvv.pcolormesh(x_axis, y_axis, vis1[:,:,1].T, vmax=vmax, vmin=vmin, shading='nearest', cmap='turbo')
 
         fig.colorbar(im, cax=cax, ax=axvv)
 
@@ -421,7 +421,7 @@ class PlotMeerKAT(timestream_task.TimestreamTask):
             fig_name = '%s_%s_m%03d_x_m%03d.png' % (fig_prefix, main_data,
                                                     bl[0]-1,    bl[1]-1)
             fig_name = output_path(fig_name)
-            plt.savefig(fig_name, formate='png') #, dpi=100)
+            plt.savefig(fig_name, format='png', dpi=200)
         if self.params['show'] is not None:
             if self.params['show'] == 'all':
                 plt.show()
@@ -801,7 +801,7 @@ class PlotVvsTime(PlotTimeStream):
         if fig_prefix is not None:
             fig_name = '%s_%s_TS.png' % (fig_prefix, main_data)
             fig_name = output_path(fig_name)
-            plt.savefig(fig_name, formate='png') #, dpi=100)
+            plt.savefig(fig_name, format='png') #, dpi=100)
         #if self.params['show'] is not None:
         #    if self.params['show'] == bl[0]-1:
         #        plt.show()
@@ -1103,7 +1103,7 @@ class PlotPointingvsTime(PlotTimeStream):
         if fig_prefix is not None:
             fig_name = '%s_%s_AzEl.png' % (fig_prefix, main_data)
             fig_name = output_path(fig_name)
-            plt.savefig(fig_name, formate='png') #, dpi=100)
+            plt.savefig(fig_name, format='png') #, dpi=100)
 
 
 class PlotSpectrum(PlotTimeStream):
@@ -1225,7 +1225,7 @@ class PlotSpectrum(PlotTimeStream):
         if fig_prefix is not None:
             fig_name = '%s_%s_Spec.png' % (fig_prefix, main_data)
             fig_name = output_path(fig_name)
-            plt.savefig(fig_name, formate='png') #, dpi=100)
+            plt.savefig(fig_name, format='png') #, dpi=100)
 
 class CheckSpec(timestream_task.TimestreamTask):
     

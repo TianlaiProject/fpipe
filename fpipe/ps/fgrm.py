@@ -161,7 +161,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                 weight_key = self.params['weight_key'] #'noise_diag'
                 if weight_key is not None:
                     weight = al.load_h5(input[tind[0]], weight_key)
-                    if weight_key is 'noise_diag':
+                    if weight_key == 'noise_diag':
                         weight_prior = self.params['weight_prior']
                         logger.info('using wp %e'%weight_prior)
                         weight = make_noise_factorizable(weight, weight_prior)

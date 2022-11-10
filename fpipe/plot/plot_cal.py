@@ -54,7 +54,7 @@ def plot_Tnoise(result_path, key_list, beam_list,
         if freq.max()/1.e3 > xmax: xmax=freq.max()/1.e3
 
     for bi in range(19):
-        ii = bi / 4
+        ii = bi // 4
         jj = bi % 4
 
         ax = axes[bi]
@@ -111,7 +111,7 @@ def plot_eta(result_path, key_list, beam_list,
         if freq.max()/1.e3 > xmax: xmax=freq.max()/1.e3
 
     for bi in range(19):
-        ii = bi / 4
+        ii = bi // 4
         jj = bi % 4
 
         ax = axes[bi]
@@ -198,7 +198,7 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
     #       band_list, tnoise_model, pol):
     for bi in range(19):
 
-        ii = bi / 4
+        ii = bi // 4
         jj = bi % 4
 
         ax = axes[bi]
@@ -221,7 +221,7 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
                frameon=False, loc=4, bbox_to_anchor=(0.94, 0.10), ncol=2)
 
     if output is not None:
-        fig.savefig(output, formate='png', dpi=200)
+        fig.savefig(output, format='png', dpi=200)
 
 
 def plot_fwhm_days(result_path, key_list_dict, beam_list,
@@ -266,7 +266,7 @@ def plot_fwhm_days(result_path, key_list_dict, beam_list,
     if fmin is None: fmin=xmin
     if fmax is None: fmax=xmax
     for bi in range(19):
-        ii = bi / 4
+        ii = bi // 4
         jj = bi % 4
 
         ax = axes[bi]
@@ -291,7 +291,7 @@ def plot_fwhm_days(result_path, key_list_dict, beam_list,
                frameon=False, loc=4, bbox_to_anchor=(0.94, 0.10), ncol=2)
 
     if output is not None:
-        fig.savefig(output, formate='png', dpi=200)
+        fig.savefig(output, format='png', dpi=200)
 
 
 def plot_Tnoise_days(result_path, key_list_dict, beam_list,
@@ -347,7 +347,7 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
         ci += 1
 
     for bi in range(19):
-        ii = bi / 4
+        ii = bi // 4
         jj = bi % 4
 
         ax = axes[bi]
@@ -370,7 +370,7 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
                frameon=False, loc=4, bbox_to_anchor=(0.94, 0.10), ncol=2)
 
     if output is not None:
-        fig.savefig(output, formate='png', dpi=200)
+        fig.savefig(output, format='png', dpi=200)
 
 def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
                      band_list=['_1050-1150MHz', '_1150-1250MHz', '_1250-1450MHz'],
@@ -442,7 +442,7 @@ def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
         ci += 1
 
     for bi in range(19):
-        ii = bi / 4
+        ii = bi // 4
         jj = bi % 4
 
         ax = axes[bi]
@@ -467,6 +467,6 @@ def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
                frameon=False, loc=4, bbox_to_anchor=(0.94, 0.10), ncol=2)
 
     if output is not None:
-        fig.savefig(output, formate='png', dpi=200)
+        fig.savefig(output, format='png', dpi=200)
 
     return np.array(peak)

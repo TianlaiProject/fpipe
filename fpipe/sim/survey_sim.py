@@ -169,7 +169,7 @@ class SurveySim(pipeline.TaskBase):
         self.iter = 0
         self.iter_num = len(self.iter_list)
 
-    def __next__(self):
+    def next(self):
 
         if self.iter == self.iter_num:
             mpiutil.barrier()

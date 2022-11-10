@@ -68,7 +68,7 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
         else: ax.set_yticklabels([])
 
     if output is not None:
-        fig.savefig(output, formate='png')
+        fig.savefig(output, format='png')
         plt.show()
         plt.clf()
 
@@ -190,7 +190,7 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
             ax.set_ylabel(r'$g(t)$')
 
     if output is not None:
-        fig.savefig(output, formate='png')
+        fig.savefig(output, format='png')
         plt.show()
         plt.clf()
 
@@ -219,7 +219,7 @@ def plot_baseline(file_list, output_name=None, axes=None, utc=True,tz=8):
     cnorm = mpl.colors.Normalize(vmin=0, vmax=18)
     
     if axes is None:
-        fig = plt.figure(figsize=(7, 3))
+        fig = plt.figure(figsize=(10, 3))
         ax  = fig.add_axes([0.12, 0.16, 0.83, 0.79])
     else:
         fig, ax = axes
@@ -252,12 +252,12 @@ def plot_baseline(file_list, output_name=None, axes=None, utc=True,tz=8):
         else:
             ax.set_xlabel('Time [hr]')
         ax.set_xlim(xx.min(), xx.max())
-        ax.set_ylim(-3, 3)
+        ax.set_ylim(-1, 3)
         #ax.set_xlabel('Time [hr]')
         ax.set_ylabel('Baseline [K]')
         
         if output_name is not None:
-            fig.savefig(output_name, formate='png', dpi=200)
+            fig.savefig(output_name, format='png', dpi=200)
 
         plt.show()
 #def plot_baseline(baseline_file):
@@ -357,7 +357,7 @@ def plot_gtgnu(file_name, title='', pol=0, norm=False, output=None, ymin=None, y
     cax.set_title(title)
 
     if output is not None:
-        fig.savefig(output, formate='png')
+        fig.savefig(output, format='png')
         plt.show()
         plt.clf()
 
@@ -424,6 +424,8 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
                 ax.set_yticklabels([])
             else:
                 ax.set_ylabel(ylabel)
+
+            ax.minorticks_on()
 
     if not ratio:
         #bandpass_combined = np.median(bandpass_combined, axis=0)

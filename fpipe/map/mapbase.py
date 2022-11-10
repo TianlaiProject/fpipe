@@ -128,7 +128,7 @@ def _read_block_from_dset(df, dset_name, indx, data, chunk_size=1024**3):
     os.lseek(_f, total_off, os.SEEK_SET)
     for ii in range(0, block_siz, chunk_size):
         read_size = min(chunk_size, block_siz - ii)
-        _s = slice(ii/data.itemsize, (ii+read_size)/data.itemsize)
+        _s = slice(ii//data.itemsize, (ii+read_size)//data.itemsize)
         data.flat[_s] += np.frombuffer(os.read(_f, read_size), dtype=dset.dtype)
 
     fcntl.lockf(_f, fcntl.LOCK_UN)
@@ -156,8 +156,7 @@ def _write_block_to_dset(df, dset_name, indx, data, chunk_size=1024**3):
     try:
         for ii in range(0, block_siz, chunk_size):
             read_size = min(chunk_size, block_siz - ii)
-            _s = slice(ii/data.itemsize, (ii+read_size)/data.itemsize)
-            #print ii, read_size/data.itemsize, data.flat[_s].shape
+            _s = slice(ii//data.itemsize, (ii+read_size)//data.itemsize)
             data.flat[_s] += np.frombuffer(os.read(_f, read_size), dtype=dset.dtype)
     except ValueError as err:
         msg = 'empty array, igore read'
@@ -167,8 +166,9 @@ def _write_block_to_dset(df, dset_name, indx, data, chunk_size=1024**3):
     os.lseek(_f, total_off, os.SEEK_SET)
     for ii in range(0, block_siz, chunk_size):
         read_size = min(chunk_size, block_siz - ii)
-        _s = slice(ii/data.itemsize, (ii+read_size)/data.itemsize)
-        buf = buffer(data.flat[_s])
+        _s = slice(ii//data.itemsize, (ii+read_size)//data.itemsize)
+        #buf = buffer(data.flat[_s])
+        buf = memoryview(data.flat[_s])
         os.write(_f, buf)
     fcntl.lockf(_f, fcntl.LOCK_UN)
     os.close(_f)

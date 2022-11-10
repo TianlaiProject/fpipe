@@ -9,7 +9,7 @@ from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation
 
-from tlpipe.pipeline import pipeline
+from fpipe.pipeline import pipeline
 from tlpipe.utils.path_util import output_path
 from caput import mpiutil
 
@@ -28,6 +28,11 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
 
     params_init = {
             'prefix'        : 'MeerKAT3',
+
+            'pk_in': True,
+            'psfile' : None,
+            'psredshift' : 0.,
+            'EoR' : False,
 
 
             'freq' : np.linspace(950, 1350, 32), 
@@ -54,6 +59,8 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
             'lognorm' : False,
             'beam_file' : None,
 
+            'random_seed' : 3935040887,
+
             }
 
     prefix = 'csim_'
@@ -63,10 +70,12 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         super(CubeSim, self).__init__(*args, **kwargs)
         mapbase.MapBase.__init__(self)
 
-        if self.params['lognorm']:
-            self.corr = lognorm.LogNormal
+        if self.params['EoR']:
+            self.corr = lognorm.EoR(psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
+        elif self.params['lognorm']:
+            self.corr = lognorm.LogNormal(psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
         else:
-            self.corr = corr21cm.Corr21cm
+            self.corr = lognorm.Normal(psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
 
     def setup(self):
 
@@ -129,7 +138,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
             self.beam_data = 1.2 * fwhm1400 * 1400. / self.beam_freq
             #self.beam_freq *= 1.e6
 
-        random.seed(3936650408)
+        random.seed(self.params['random_seed'])
         seeds = random.random_integers(100000000, 1000000000, mpiutil.size)
         self.seed = seeds[mpiutil.rank]
         print("RANK: %02d with random seed [%d]"%(mpiutil.rank, self.seed))
@@ -144,12 +153,13 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         self.iter      = 0
         self.iter_num  = len(self.iter_list)
 
-    def __next__(self):
+    def next(self):
 
         if self.iter == self.iter_num:
             mpiutil.barrier()
             #self.close_outputfiles()
-            next(super(CubeSim, self))
+            #next(super(CubeSim, self))
+            super(CubeSim, self).next()
 
         print("rank %03d, %03d"%(mpiutil.rank, self.iter_list[self.iter]))
 
@@ -178,7 +188,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         if self.scenario == "nostr":
             print("running dd+vv and no streaming case")
             #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp)
-            simobj = self.corr.like_kiyo_map(self.map_tmp)
+            simobj = self.corr.like_kiyo_map(self.map_tmp, psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
             maps = simobj.get_kiyo_field_physical(refinement=self.refinement)
 
         else:
@@ -186,14 +196,14 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
                 print("running dd+vv and streaming simulation")
                 #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp,
                 simobj = self.corr.like_kiyo_map(self.map_tmp,
-                                           sigma_v=self.streaming_dispersion)
+                                           sigma_v=self.streaming_dispersion, psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
 
                 maps = simobj.get_kiyo_field_physical(refinement=self.refinement)
 
             if self.scenario == "ideal":
                 print("running dd-only and no mean simulation")
                 #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp)
-                simobj = self.corr.like_kiyo_map(self.map_tmp)
+                simobj = self.corr.like_kiyo_map(self.map_tmp, psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
                 maps = simobj.get_kiyo_field_physical(
                                             refinement=self.refinement,
                                             density_only=True,
@@ -352,7 +362,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
             output_file = output_prefix + '_%03d_%s.h5'%(mock_idx, outfile)
             output_file = output_path(output_file, relative=True)
             #self.allocate_output(output_file, 'w')
-            if outfile is 'optsim':
+            if outfile == 'optsim':
                 map_key = 'delta'
                 weight_key = 'separable'
                 map_name = 'sim_map_optsim'
@@ -447,7 +457,7 @@ class TransferSim(CubeSim):
             output_file = output_prefix + '_%03d_%s.h5'%(mock_idx, outfile)
             output_file = output_path(output_file, relative=True)
             #self.allocate_output(output_file, 'w')
-            if outfile is 'optsim':
+            if outfile == 'optsim':
                 map_key = 'delta'
                 weight_key = 'separable'
                 map_name = 'sim_map_optsim'

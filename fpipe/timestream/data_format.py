@@ -4,6 +4,8 @@ import h5py
 from astropy import units as u
 from astropy.time import Time
 
+import gc
+
 class FASTfits_Spec(object):
     '''
     Load the raw FAST fits file
@@ -206,7 +208,17 @@ class FASTh5_Spec(object):
         self.time = data['time']
         self.date_obs = self.time[0]
         self.data = data['vis'].data
-        self.mask = data['vis'].mask
+        if not hasattr(data['vis'].mask, '__iter__'):
+            self.mask = np.zeros(self.data.shape, dtype='bool')
+        else:
+            self.mask = data['vis'].mask
+        self.ra   = data['ra']
+        self.dec  = data['dec']
+        self.ants = data['ants']
+        self.ns_on= data['ns_on']
+
+        del data
+        gc.collect()
 
 
     def load_data(self, data_file, data=None, freq_sel = [None, None]):
@@ -221,7 +233,8 @@ class FASTh5_Spec(object):
             
             freq = freq[slice(*freq_sel)]
         
-            vis = np.abs(fh['vis'][:, slice(*freq_sel), ...])
+            #vis = np.abs(fh['vis'][:, slice(*freq_sel), ...])
+            vis = fh['vis'][:, slice(*freq_sel), ...]
         
             #timestart = fh.attrs['sec1970']
             #timestep  = fh.attrs['inttime']
@@ -231,9 +244,12 @@ class FASTh5_Spec(object):
             
             ra = fh['ra'][:]
             dec= fh['dec'][:]
+
+            ns_on = fh['ns_on'][:].astype('bool')
+            mask = fh['vis_mask'][:, slice(*freq_sel), ...].astype('bool')
         
-        vis = np.ma.array(vis)
-        vis.mask = np.zeros(vis.shape).astype('bool')
+        vis = np.ma.array(vis, mask=mask)
+        #vis.mask = np.zeros(vis.shape).astype('bool')
 
         if data is None:
             data = {}
@@ -243,11 +259,16 @@ class FASTh5_Spec(object):
             data['ants'] = ants
             data['ra'] = ra
             data['dec'] = dec
+            data['ns_on'] = ns_on
         else:
-            data['vis']  = np.ma.concatenate([data['vis'], vis],   axis=0)
-            data['time'] = np.ma.concatenate([data['time'], time], axis=0)
-            data['ra']   = np.ma.concatenate([data['ra'], ra],     axis=0)
-            data['dec']  = np.ma.concatenate([data['dec'], ra],    axis=0)
+            data['vis']  = np.ma.concatenate([data['vis'], vis],    axis=0)
+            data['time'] = np.ma.concatenate([data['time'], time],  axis=0)
+            data['ra']   = np.ma.concatenate([data['ra'], ra],      axis=0)
+            data['dec']  = np.ma.concatenate([data['dec'], dec],    axis=0)
+            data['ns_on']= np.ma.concatenate([data['ns_on'], ns_on],axis=0)
+
+        del vis, mask, ra, dec, ns_on, freq, ants
+        gc.collect()
 
         return data
 

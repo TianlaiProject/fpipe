@@ -16,6 +16,8 @@ from scipy import signal
 import warnings
 warnings.simplefilter('ignore', np.RankWarning)
 
+import gc
+
 class Remove_Baseline(timestream_task.TimestreamTask):
     """
     """
@@ -141,6 +143,9 @@ def _output_baseline(file_list):
     baseline = np.ma.median(vis, axis=1)
 
     time = ts['sec1970'][:]
+
+    del vis, vis_mask, on
+    gc.collect()
 
     return baseline, time
 

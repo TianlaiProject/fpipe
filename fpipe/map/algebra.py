@@ -388,7 +388,7 @@ def open_memmap(filename, mode='r+', dtype=None, shape=None,
     if metafile is None :
         metafile = filename + '.meta'
     # Read the meta data if need be.
-    if ('r' in mode or mode is 'c') and os.path.isfile(metafile) :
+    if ('r' in mode or mode == 'c') and os.path.isfile(metafile) :
         info_fid = open(metafile, 'r')
         try :
             infostring = info_fid.readline() 
@@ -398,7 +398,7 @@ def open_memmap(filename, mode='r+', dtype=None, shape=None,
     else :
         info = {}
     # In read mode don't pass a metafile to protect the meta data.
-    if mode is 'r' or mode is 'c' :
+    if mode == 'r' or mode == 'c' :
         metafile = None
     marray = info_memmap(marray, info, metafile)
         

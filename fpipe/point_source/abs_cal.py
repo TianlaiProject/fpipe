@@ -1,3 +1,6 @@
+import multiprocessing as mp
+#from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 import numpy as np
 import h5py as h5
 from scipy.interpolate import interp1d
@@ -23,6 +26,8 @@ def cali(data_path, data_name, cal_ra, cal_dec, cal_model,
 
     for o in iter_beams(data_path, data_name):
         ii, bi, vis, msk, ns, ra, dec, freq = o
+
+        print('Beam %02d Freq %6.2f - %6.2f'%(bi, freq[0], freq[-1]))
 
         Tnd, mask, r, fit_params, vis = cali_onefeed(vis, msk, ns, ra, dec, freq,
                                                      cal_ra, cal_dec, cal_model,
@@ -131,7 +136,8 @@ def iter_beams(data_path, data_name):
 
 
 def cali_onefeed(vis, msk, ns, ra, dec, freq, cal_ra, cal_dec, cal_model,
-                 off_threshold=6./60., on_threshold=3./60.):
+                 off_threshold=6./60., on_threshold=3./60., return_vis_only=False,
+                 nworker=32):
 
     vis = np.ma.array(vis, mask=msk)
 
@@ -166,31 +172,79 @@ def cali_onefeed(vis, msk, ns, ra, dec, freq, cal_ra, cal_dec, cal_model,
         msg = 'Cal Source off pointing'
         raise ValueError(msg)
 
+    if return_vis_only:
+        return vis, mask
+
     # calibrate freq-by-freq
+    #print('calibrate freq-by-freq')
+
     Tnd = []
     fit_params = []
-    for fid, f in enumerate(freq):
-        if np.all(vis.mask[~ns, :, :][:, fid, :]):
-            Tnd.append([0, 0])
-            fit_params.append([[0, 0, 0], [0, 0, 0]])
-            continue
-        cal_T = np.mean(cal_3C286()(f * 1.e-3))
-        _yy = vis[~ns, :, :][:, fid, 0]
-        _fit_params_xx = fit_beam(r[r<on_threshold], _yy[r<on_threshold])
-        Tnd_xx = cal_T / np.exp(_fit_params_xx[-1])
-
-        _yy = vis[~ns, :, :][:, fid, 1]
-        _fit_params_yy = fit_beam(r[r<on_threshold], _yy[r<on_threshold])
-        Tnd_yy = cal_T / np.exp(_fit_params_yy[-1])
-
+    args = (vis[~ns, ...], freq, r, on_threshold)
+    #with ThreadPoolExecutor(max_workers=nworker) as p:
+    with mp.Pool(16) as p:
+        result = p.map(partial(_cal_func, args=args), [fid for fid in range(len(freq))])
+    for _r in result:
+        Tnd_xx, Tnd_yy, _fit_params_xx, _fit_params_yy = _r
         Tnd.append([Tnd_xx, Tnd_yy])
         fit_params.append([_fit_params_xx, _fit_params_yy])
 
+    #Tnd = []
+    #fit_params = []
+    #for fid, f in enumerate(freq):
+    #    if np.all(vis.mask[~ns, :, :][:, fid, :]):
+    #        Tnd.append([0, 0])
+    #        fit_params.append([[0, 0, 0], [0, 0, 0]])
+    #        continue
+
+    #    _on_threshold = on_threshold * 1000./f
+    #    cal_T = np.mean(cal_3C286()(f * 1.e-3))
+    #    _yy = vis[~ns, :, :][:, fid, 0]
+    #    _fit_params_xx = fit_beam(r[r<_on_threshold], _yy[r<_on_threshold])
+    #    Tnd_xx = cal_T / np.exp(_fit_params_xx[-1])
+
+    #    _yy = vis[~ns, :, :][:, fid, 1]
+    #    _fit_params_yy = fit_beam(r[r<_on_threshold], _yy[r<_on_threshold])
+    #    Tnd_yy = cal_T / np.exp(_fit_params_yy[-1])
+
+    #    Tnd.append([Tnd_xx, Tnd_yy])
+    #    fit_params.append([_fit_params_xx, _fit_params_yy])
+
     return Tnd, mask, r, fit_params, vis
+
+def _cal_func(fid, args):
+
+    vis, freq, r, on_threshold = args
+
+    f = freq[fid]
+    _on_threshold = on_threshold #* 1000./f
+    cal_T = np.mean(cal_3C286()(f * 1.e-3))
+
+    if np.all(vis[:, fid, :].mask):
+        return 0, 0, [0, 0, 0], [0, 0, 0]
+
+    _yy = vis[:, fid, 0][r<_on_threshold]
+    if np.all(_yy<=0):
+        _fit_params_xx = [0, 0, 0]
+        Tnd_xx = 0
+    else:
+        _fit_params_xx = fit_beam(r[r<_on_threshold], _yy)
+        Tnd_xx = cal_T / np.exp(_fit_params_xx[-1])
+
+    _yy = vis[:, fid, 1][r<_on_threshold]
+    if np.all(_yy<=0):
+        _fit_params_yy = [0, 0, 0]
+        Tnd_yy = 0
+    else:
+        _fit_params_yy = fit_beam(r[r<_on_threshold], _yy)
+        Tnd_yy = cal_T / np.exp(_fit_params_yy[-1])
+
+    return Tnd_xx, Tnd_yy, _fit_params_xx, _fit_params_yy
 
 def fit_beam(xx, yy):
 
-    amp = np.polyfit(xx, np.log(yy), deg=2)
+    good = yy > 0
+    amp = np.polyfit(xx[good], np.log(yy[good]), deg=2)
     #print amp
 
     return amp
@@ -205,10 +259,11 @@ def flag_freq(vis):
         mean = np.ma.mean(spec)
         bad = np.abs(spec) > 5*sig
         for j in np.arange(spec.shape[0])[bad]:
-            mask[j-60:j+60] = True
+            mask[j-100:j+100] = True
         spec.mask += mask
         new_mask = np.sum(mask.astype('int')) - nmask
         if new_mask  == 0:
+            #print("mask loop %02d"%i)
             return mask
 
     print(new_mask)
@@ -229,9 +284,11 @@ def load_fitting_params(path):
     b = fit_params[:, :, 1]
     c = fit_params[:, :, 0]
 
-    sigma2 = -1./c/2.
-    mu = - b/c/2.
-    A = np.exp(a - b**2/4./c)
+    mask = c==0
+    c[mask] = np.inf
+    sigma2 = np.ma.array(-1./c/2., mask=mask)
+    mu = np.ma.array(- b/c/2., mask=mask)
+    A = np.ma.array(np.exp(a - b**2/4./c), mask=mask)
 
     fwhm = (sigma2**0.5) * 2. * ( 2. * np.log(2.) ) **0.5
     fwhm = fwhm * 60.

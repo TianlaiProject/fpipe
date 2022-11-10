@@ -11,7 +11,7 @@ def setup_axes(m=4, n=5, colorbar=True, title=''):
     
     axes = []
     for bi in range(19):
-        i = int(bi / n)
+        i = int(bi // n)
         j = int(bi - i * n)
         ax = fig.add_subplot(gs[i,j])
             

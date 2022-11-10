@@ -5,7 +5,7 @@ from fpipe.timestream import timestream_task
 from fpipe.container.timestream import FAST_Timestream
 import h5py
 from astropy.time import Time
-from tlpipe.utils.path_util import output_path
+from tlpipe.utils.path_util import output_path as op_func
 from caput import mpiutil
 from caput import mpiarray
 from scipy.signal import medfilt
@@ -49,6 +49,8 @@ class Bandpass_Cal(timestream_task.TimestreamTask):
         func(self.cal_data, full_data=True, copy_data=False, 
                 show_progress=show_progress, 
                 progress_step=progress_step, keep_dist_axis=False)
+
+        ts.redistribute('time')
 
         return super(Bandpass_Cal, self).process(ts)
 
@@ -102,6 +104,7 @@ class OutputBandpass(timestream_task.TimestreamTask):
 
         #print(self.output_files)
         logger.info('Output bandpass to file %s'%self.output_files)
+        op_func(self.output_files, relative=False)
         with h5py.File(self.output_files[0], 'w') as f:
             f['bandpass'] = self.bandpass
             f['freq'] = ts.freq
@@ -187,6 +190,7 @@ def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_p
     bandpass_combined = []
     for block_id in range(blk_st, blk_ed+1):
 
+        print(bandpass_temp%(bandpass_name, block_id, block_id))
         bandpass, freq, time = load_bandpass(bandpass_path,
             bandpass_temp%(bandpass_name, block_id, block_id) + '_%s.h5', tnoise_path)
         time_list.append(time)

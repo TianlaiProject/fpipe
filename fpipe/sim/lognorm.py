@@ -85,17 +85,78 @@ def ps2xi_fft(pk, n=256, dr=4., get_1d=False):
     else:
         return xi_3d
 
+class EoR(corr21cm.Corr21cm):
+
+    def __init__(self, ps=None, sigma_v=0.0, redshift=0.0, psfile=None, pk_input=True, **kwargs):
+
+        if psfile is None:
+            psfile = join(dirname(__file__),"data/input_matterpower.dat")
+            redshift = 0.2
+        print("loading matter power file: " + psfile)
+        pwrspec_data = np.genfromtxt(psfile)
+        if not pk_input:
+            factor = pwrspec_data[:,0] ** 3 / 2. / np.pi**2
+        else:
+            factor = 1
+        (log_k, log_pk) = (np.log(pwrspec_data[:,0]), \
+                           np.log(pwrspec_data[:,1] / factor))
+        logpk_interp = interpolate.interp1d(log_k, log_pk,
+                                            bounds_error=False,
+                                            fill_value=np.min(log_pk))
+        pk_interp = lambda k: np.exp(logpk_interp(np.log(k)))
+
+        kstar = 7.0
+        pk = lambda k: np.exp(-0.5 * k**2 / kstar**2) * pk_interp(k)
+
+        super(EoR, self).__init__(ps=pk, sigma_v=sigma_v, redshift=redshift, **kwargs)
+
+    def T_b(self, z):
+
+        print('EoR uses Pk of brightness, ignore Tb ')
+
+        return 1.
+
+class Normal(corr21cm.Corr21cm):
+
+    def __init__(self, ps=None, sigma_v=0.0, redshift=0.0, psfile=None, pk_input=True, **kwargs):
+
+        if psfile is None:
+            psfile = join(dirname(__file__),"data/input_matterpower.dat")
+            redshift = 0.2
+        print("loading matter power file: " + psfile)
+        pwrspec_data = np.genfromtxt(psfile)
+        if not pk_input:
+            factor = pwrspec_data[:,0] ** 3 / 2. / np.pi**2
+        else:
+            factor = 1
+        (log_k, log_pk) = (np.log(pwrspec_data[:,0]), \
+                           np.log(pwrspec_data[:,1] / factor))
+        logpk_interp = interpolate.interp1d(log_k, log_pk,
+                                            bounds_error=False,
+                                            fill_value=np.min(log_pk))
+        pk_interp = lambda k: np.exp(logpk_interp(np.log(k)))
+
+        kstar = 7.0
+        pk = lambda k: np.exp(-0.5 * k**2 / kstar**2) * pk_interp(k)
+
+        super(Normal, self).__init__(ps=pk, sigma_v=sigma_v, redshift=redshift, **kwargs)
+
 
 class LogNormal(corr21cm.Corr21cm):
 
-    def __init__(self, ps=None, sigma_v=0.0, redshift=0.0, **kwargs):
+    def __init__(self, ps=None, sigma_v=0.0, redshift=0.0, psfile=None, pk_input=True, **kwargs):
 
-        psfile = join(dirname(__file__),"data/input_matterpower.dat")
-        redshift = 0.2
+        if psfile is None:
+            psfile = join(dirname(__file__),"data/input_matterpower.dat")
+            redshift = 0.2
         print("loading matter power file: " + psfile)
         pwrspec_data = np.genfromtxt(psfile)
+        if not pk_input:
+            factor = pwrspec_data[:,0] ** 3 / 2. / np.pi**2
+        else:
+            factor = 1
         (log_k, log_pk) = (np.log(pwrspec_data[:,0]), \
-                           np.log(pwrspec_data[:,1]))
+                           np.log(pwrspec_data[:,1] / factor))
         logpk_interp = interpolate.interp1d(log_k, log_pk,
                                             bounds_error=False,
                                             fill_value=np.min(log_pk))

@@ -26,7 +26,7 @@ pipe_feedback = 0
 
 ra_list = np.linspace(9, 13, 8)
 
-map_prefix = 'map_df28k_2021'
+map_prefix = 'map_df28k_2021_wbl'
 ra_st = ra_list[map_id] * 15 - 0.5
 ra_ed = ra_list[map_id+1] * 15 + 0.5
 
@@ -43,7 +43,8 @@ for x in bad_feed:
 pipe_tasks.append(dirtymap_hp.DirtyMap_healpix)
 pipe_tasks.append(cleanmap.CleanMap)
 
-dmh_input_files = ['rmbsl_sumfeeds_CC/%s'%f for f in input_files]
+#dmh_input_files = ['rmbsl_sumfeeds_CC/%s'%f for f in input_files]
+dmh_input_files = ['etaA_sumfeeds_CC/%s'%f for f in input_files]
 dmh_output_files = ['%s/dm_%02d_%s_%s%s'%(map_prefix, map_id, DATA, DATE, suffix), ]
 dmh_nside = 2048
 dmh_freq_select = (0, None)

@@ -23,21 +23,16 @@ def output_rfi_hist(file_list, fbins=[1050, 1140, 1310, 1450], output=None,
     for ii, fblock in enumerate(file_list):
         #hist = np.zeros(nbin)
         for jj, tblock in enumerate(fblock):
+            print(tblock)
             ts = FAST_Timestream(tblock)
             ts.load_all()
 
-            try:
-                on = np.sum(ts['ns_on'][:].local_array, axis=1)
-                vis = ts['vis'][~on,...].local_array
-                vis_mask = ts['vis_mask'][~on,...].local_array
-                #time = ts['sec1970'][:].local_array
-                freq = ts['freq'][:]
-            except AttributeError:
-                on = np.sum(ts['ns_on'], axis=1)
-                vis = ts['vis'][~on,:,:,:]
-                vis_mask = ts['vis_mask'][~on,:,:,:]
-                #time = ts['sec1970'][:]
-                freq = ts['freq'][:]
+            on = ts['ns_on'][:]
+            on = np.sum(on, axis=1).astype('bool')
+            vis_mask = ts['vis_mask'][:][~on,...]
+            vis = ts['vis'][:][~on, ...]
+            #time = ts['sec1970'][:].local_array
+            freq = ts['freq'][:]
 
             vis_mask = vis_mask.astype('bool')
 
@@ -51,10 +46,10 @@ def output_rfi_hist(file_list, fbins=[1050, 1140, 1310, 1450], output=None,
             freq = freq[1:]
 
             msk = vis_mask[:, 1:, ...] + vis_mask[:, :-1, ...]
-            vis_diff = np.abs(vis[:, 1:, ...] - vis[:, :-1, ...])
-            print(np.ma.min(vis_diff, axis=(0, 1)))
-            print(np.ma.max(vis_diff, axis=(0, 1)))
-            print()
+            vis_diff = np.ma.abs(vis[:, 1:, ...] - vis[:, :-1, ...])
+            #print(np.ma.min(vis_diff, axis=(0, 1)))
+            #print(np.ma.max(vis_diff, axis=(0, 1)))
+            #print()
             for jj in range(hist.shape[0]): 
                 freq_sel = (freq > fbins[jj]) * (freq < fbins[jj+1])
                 _vis_diff = vis_diff[:, freq_sel, ...].flatten()
