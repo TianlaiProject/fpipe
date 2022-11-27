@@ -353,7 +353,7 @@ class SurveySim(pipeline.TaskBase):
             df.attrs['timezone'] = 'UTC+02'  # 
             df.attrs['epoch'] = 2000.0  # year
 
-            df.attrs['telescope'] = 'MeerKAT-Dish-I' # 
+            df.attrs['telescope'] = b'MeerKAT-Dish-I' # 
             df.attrs['dishdiam'] = 13.5
             df.attrs['nants'] = vis.shape[-1]
             df.attrs['npols'] = vis.shape[-2]

@@ -387,8 +387,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         imap[mask] = np.ma.masked
 
     imap = imap[indx]
-    freq = freq[indx[-1]]
-    if isinstance( indx[-1], slice):
+    freq = freq[indx[0]]
+    if isinstance( indx[0], slice):
         freq = (freq[0], freq[-1])
         #print imap.shape
         imap = np.ma.mean(imap, axis=0)

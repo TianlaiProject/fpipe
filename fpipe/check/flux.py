@@ -365,7 +365,8 @@ def get_map_spec(imap_info, ra, dec, freq, mJy=False):
 
 def output_source(file_root, file_name_list, output_path, nvss_path_list,
         map_info=None, nvss_map_info=None, fwhm=None, flux_key='FLUX_20_CM', name_key='NAME',
-        iso_threshold=0, fmin=3000, fmax=4500, f0=1400, df=25, flux_lim=10, debug=False):
+        iso_threshold=0, fmin=3000, fmax=4500, f0=1400, df=25, flux_lim=10, debug=False,
+        max_dist=0.5):
 
     for file_name in file_name_list:
 
@@ -403,7 +404,7 @@ def output_source(file_root, file_name_list, output_path, nvss_path_list,
 
         with h5py.File(output_path + output_name + '.h5', 'w') as f:
             print(output_name)
-            for oo in iter_nvss_flux_tod(fdata, nvss_cat, fwhm, max_dist=0.5):
+            for oo in iter_nvss_flux_tod(fdata, nvss_cat, fwhm, max_dist=max_dist):
                 beam, nvss_name, nvss_flx, nvss_ra,\
                 nvss_dec, flux_model, obs_time, flux_measured, flux_measured_rms, rr, pp = oo
                 #print nvss_name, flux_measured, flux_measured_rms

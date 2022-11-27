@@ -85,9 +85,9 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
         diag_cov  = self.params['diag_cov']
         threshold = self.params['threshold']
         if self.params['healpix']:
-            task_n = np.prod(self.map_shp[:-1])
+            task_n = int(np.prod(self.map_shp[:-1]))
         else:
-            task_n = np.prod(self.map_shp[:-2])
+            task_n = int(np.prod(self.map_shp[:-2]))
 
         for task_ind in mpiutil.mpirange(task_n):
             if self.params['healpix']:

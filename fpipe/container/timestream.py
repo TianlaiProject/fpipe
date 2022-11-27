@@ -83,10 +83,10 @@ class FAST_Timestream(timestream.Timestream):
 
             pol = pol[:].tolist()
             p = self.pol_dict
-            if pol[0] == 'hh':
+            if pol[0] == b'hh':
                 # for some reason, pol attr recorded in MeerKAT data are
                 # ['hh', 'vv', 'hv', 'vh'], change it back to [0, 1, 2, 3]
-                pol = [p[_p] for _p in pol]
+                pol = [p[_p.decode()] for _p in pol]
 
             # create a new MPIArray to hold the new data
             shp = self.main_data.shape

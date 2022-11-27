@@ -128,6 +128,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
         #ts['vis_var'][:] = vis_var
 
         #print ts['vis_var'].shape
+        #print(ts['vis_var'][:].max(), ts['vis_var'][:].min())
 
         if not func is None:
 
@@ -270,7 +271,7 @@ class MakeMap_FlatSky(DirtyMap):
                     mpiutil.rank, dec_axis.min(), dec_axis.max())
             logger.info(msg)
 
-        super(MakeMap_FlagSky, self).process(ts)
+        super(MakeMap_FlatSky, self).process(ts)
 
     def init_ps_datasets(self, ts):
 
@@ -545,9 +546,9 @@ def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, ra_axis, dec_axis,
     dec_centr = dec_axis * np.pi / 180.
 
     logger.debug('est. pointing')
-    P = (np.sin(dec[:, None]) * np.sin(dec_centr[None, :]))[:, :, None]\
-      + (np.cos(dec[:, None]) * np.cos(dec_centr[None, :]))[:, :, None]\
-      * (np.cos(ra[:, None] - ra_centr[None, :]))[:, None, :]
+    P = (np.sin(dec[:, None]) * np.sin(dec_centr[None, :]))[:, None, :]\
+      + (np.cos(dec[:, None]) * np.cos(dec_centr[None, :]))[:, None, :]\
+      * (np.cos(ra[:, None] - ra_centr[None, :]))[:, :, None]
     #P = (np.sin(ra[:, None]) * np.sin(ra_centr[None, :]))[:, :, None]\
     #  + (np.cos(ra[:, None]) * np.cos(ra_centr[None, :]))[:, :, None]\
     #  * (np.cos(dec[:, None] - dec_centr[None, :]))[:, None, :]

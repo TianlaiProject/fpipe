@@ -188,7 +188,7 @@ def fill_info(df):
     df.attrs['timezone'] = 'UTC+08'  #
     df.attrs['epoch'] = 2000.0  # year
 
-    df.attrs['telescope'] = 'FAST' #
+    df.attrs['telescope'] = b'FAST' #
     df.attrs['dishdiam'] = 300.
     df.attrs['cylen'] = -1 # For dish: -1
     df.attrs['cywid'] = -1 # For dish: -1
