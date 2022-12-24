@@ -106,22 +106,6 @@ def fit_baseline(vis, time, vis_mask, baseline_file):
             for ii in range(vis.shape[1]):
                 bsl[:, ii, pi] = np.poly1d(p[ii])(_xx) * bsl_xx
             
-        #bsl[:, :, pi] =   a_xx[None, :] * bsl_xx[:, None]
-
-        #a_xx = a_xx[None, ...]
-        #x = x[:, None]
-        ##a_poly = a_xx[..., 0] * x**2 + a_xx[..., 1] * x + a_xx[..., 2]
-        #a_poly = a_xx[..., 0] * x + a_xx[..., 1]
-        #bsl[:, :, pi] =   a_poly * bsl_xx[:, None]
-
-    ##_vis_yy = np.matrix(vis[:, :, 1])
-    #_vis_yy = vis[:, :, 1]
-    #_vis_yy[vis_mask[:, :, 1]] = 0.
-    #_vis_yy = np.matrix(_vis_yy)
-    #bsl_yy  = np.matrix(bsl_yy[:, None])
-    #a_yy = (bsl_yy.T * bsl_yy)**(-1) * bsl_yy.T * _vis_yy
-    #bsl[:, :, 1] = np.array(a_yy) * np.array(bsl_yy)
-
     return bsl
 
 def _output_baseline(file_list):
@@ -140,33 +124,39 @@ def _output_baseline(file_list):
 
     vis.mask += on
 
+    #mask_t = np.sum(vis.mask.astype('int'), axis=1) / float(vis.shape[1])
+    #mask_t = mask_t > 0.5
+    #vis.mask += mask_t[:, None, :, :]
+
     baseline = np.ma.median(vis, axis=1)
 
     time = ts['sec1970'][:]
 
+    mask = vis.mask
     del vis, vis_mask, on
     gc.collect()
 
-    return baseline, time
+    return baseline, time, mask
 
 def output_baseline(file_list, output_name):
 
     baseline = []
     for fs in file_list:
-        _baseline, time = _output_baseline(fs)
+        _baseline, time, mask = _output_baseline(fs)
         baseline.append(_baseline[None, ...])
     baseline = np.ma.concatenate(baseline, axis=0)
     baseline = np.ma.median(baseline, axis=0)
 
     _m = np.ma.mean(baseline, axis=0)
-    baseline -= _m[None, ...]
-    baseline_median = np.ma.median(baseline, axis=(1, 2))
+    baseline_median = np.ma.median(baseline.copy() - _m[None, ...], axis=(1, 2))
 
     l = 100
     baseline_pad = np.pad(baseline_median, l, 'symmetric')
-    baseline = signal.medfilt(baseline_pad, [2*l+1,])[l:-l]
+    baseline_all = signal.medfilt(baseline_pad, [2*l+1,])[l:-l]
 
     with h5.File(output_name, 'w') as f:
-        f['baseline'] = baseline
+        f['baseline'] = baseline_all
         f['time'] = time
+        f['baseline_feed'] = baseline
+        f['mask'] = mask.astype('int')
 

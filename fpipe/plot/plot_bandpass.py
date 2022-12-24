@@ -194,7 +194,71 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
         plt.show()
         plt.clf()
 
-def plot_baseline(file_list, output_name=None, axes=None, utc=True,tz=8):
+def plot_baseline(baseline_file, output_name=None, axes=None, utc=True, tz=8,
+        xmin=None, xmax=None):
+
+    with h5.File(baseline_file, 'r') as f:
+        baseline = f['baseline'][:]
+        time     = f['time'][:]
+        baseline_feed = f['baseline_feed'][:]
+        #mask     = f['mask'][:]
+
+    baseline_feed = np.ma.masked_equal(baseline_feed, 0)
+
+    #mask_t = np.sum(mask, axis=1) / float(mask.shape[1])
+    #mask_t = mask_t > 0.5
+    #baseline_feed.mask += mask_t
+
+    if utc:
+        _tz = (tz * u.hour).to(u.s).value
+        xx = [datetime.utcfromtimestamp(s+_tz) for s in time]
+        xlabel = "UTC+%02d %s %s"%(tz, xx[0].date(), xx[0].time())
+        xx = mdates.date2num(xx)
+    else:
+        xx = time - time[0]
+        xx /= 3600.
+
+    cnorm = mpl.colors.Normalize(vmin=0, vmax=18)
+
+    if axes is None:
+        fig = plt.figure(figsize=(10, 3))
+        ax  = fig.add_axes([0.12, 0.16, 0.83, 0.79])
+    else:
+        fig, ax = axes
+
+    _m = np.ma.mean(baseline_feed, axis=0)
+    baseline_feed = baseline_feed - _m[None, ...]
+    
+    for i in range(19):
+        ax.plot(xx, baseline_feed[:, 0, i], c=cm.jet(cnorm(i)), lw=0.5)
+        ax.plot(xx, baseline_feed[:, 1, i], c=cm.jet(cnorm(i)), lw=0.5)
+    
+    ax.plot(xx, baseline, 'k-', lw=1.5)
+        
+    if axes is None:
+        if utc:
+            date_format = mdates.DateFormatter('%H:%M')
+            ax.xaxis.set_major_formatter(date_format)
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=1))
+            #ax.xaxis.set_minor_locator(mdates.MinuteLocator(interval=10))
+            ax.set_xlabel(xlabel)
+        else:
+            ax.set_xlabel('Time [hr]')
+        if xmin is None:
+            xmin = xx.min()
+        if xmax is None:
+            xmax = xx.max()
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(-2, 3)
+        #ax.set_xlabel('Time [hr]')
+        ax.set_ylabel('Baseline [K]')
+        
+        if output_name is not None:
+            fig.savefig(output_name, format='png', dpi=200)
+
+        plt.show()
+
+def plot_baseline_raw(file_list, output_name=None, axes=None, utc=True,tz=8):
 
     baseline_list = []
     for fs in file_list:

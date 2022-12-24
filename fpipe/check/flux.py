@@ -319,7 +319,7 @@ def get_map_spec(imap_info, ra, dec, freq, mJy=False):
     #nmap = nmap[freq_sel]
 
     # load beam size data
-    data = np.loadtxt('/users/ycli/code/fpipe/fpipe/data/fwhm.dat')
+    data = np.loadtxt('/home/ycli/code/fpipe/fpipe/data/fwhm.dat')
     f = data[4:, 0] #* 1.e-3
     d = data[4:, 1:]
     fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")(freq)
@@ -327,8 +327,9 @@ def get_map_spec(imap_info, ra, dec, freq, mJy=False):
     beam_sig = (fwhm / (2. * np.sqrt(2.*np.log(2.))))
 
     #r1 = hp.nside2resol(nside, arcmin=True) / 60.
-    #r1 = np.max( fwhm / 2. ) * 1.0
-    r1 = np.max( fwhm ) * 1.0
+    r1 = np.max( fwhm / 2. ) * 1.0
+    print(r1)
+    #r1 = np.max( fwhm ) * 1.0
     _r = _get_spec(imap, nmap, pixs, ra, dec, nside, beam_sig, r1=r1)
     if _r is None:
         return None
@@ -603,6 +604,7 @@ def iter_flux_beam(beam_list, flux_path_list, tod=True):
         flux_nvss = []
         flux_fast = []
         flux_rms  = []
+        name_nvss = []
         for flux_path in flux_path_list:
             data_key = flux_path.split('/')[-1]
             data_key = data_key.split('_')[0]
@@ -626,12 +628,13 @@ def iter_flux_beam(beam_list, flux_path_list, tod=True):
                         flux_nvss.append(x)
                         flux_fast.append(y)
                         flux_rms.append(e)
+                        name_nvss.append(s)
 
                     else:
                         #flux_nvss.append(f['B%02d/%s/MAPS_NVSS'%(i, s)][()])
                         flux_nvss.append(f['B%02d/%s/FLUXRADEC'%(i, s)][0])
                         flux_fast.append(f['B%02d/%s/MAPS_FLUX'%(i, s)][()])
-        yield "Feed %02d"%i, np.array(flux_nvss), np.array(flux_fast), np.array(flux_rms)
+        yield "Feed %02d"%i, np.array(flux_nvss), np.array(flux_fast), np.array(flux_rms), np.array(name_nvss)
 
 def iter_flux_days(beam_list, flux_path_list, tod=True):
 
@@ -759,7 +762,7 @@ def plot_flux_chisq(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
     color=iter(cm.tab20(np.linspace(0,1,12)))
 
     hist_list = []
-    for label, x, y, e in iter_func(beam_list, flux_path_list, tod=tod):
+    for label, x, y, e, name in iter_func(beam_list, flux_path_list, tod=tod):
 
         good = ( x > 1.e-1 ) * ( y > 1.e-1 )
         x = x[good]
@@ -821,12 +824,15 @@ def plot_flux_hist(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
     color=iter(cm.tab20(np.linspace(0,1,12)))
 
     hist_list = []
-    for label, x, y, e in iter_func(beam_list, flux_path_list, tod=tod):
+    name_list = []
+    for label, x, y, e, name in iter_func(beam_list, flux_path_list, tod=tod):
 
         #good = ( x > 1.e-1 ) * ( y > 1.e-1 )
         good = ( x > 1.e0 ) * ( y > 1.e0 )
         x = x[good]
         y = y[good]
+        name = name[good]
+        name_list += list(name)
 
         diff = (y - x)
         if diff_fraction:
@@ -868,12 +874,16 @@ def plot_flux_hist(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
     #ax.loglog()
     #ax.semilogy()
     ncol = 1
-    if len(legend_list) > 5: ncol=2
+    #if len(legend_list) > 5: ncol=2
     ax.legend(handles=legend_list, frameon=False, markerfirst=True, loc=2, ncol=ncol, mode='expand')
     #ax.set_aspect('equal')
     if axes is None:
         ax.set_xlabel('NVSS Flux at 1400 MHz (Jy)')
         ax.set_ylabel('Measured Flux at 1400 MHz (Jy)')
+
+    print("="*40)
+    print("Totally there are %4d (%4d) sources"%(len(name_list), len(set(name_list))))
+    print("="*40)
 
     #return fig, ax
 
@@ -914,33 +924,38 @@ def plot_flux_hist_allbeam(flux_diff_path, tod=True, rms_sys=None, ymin=1.e-4, y
 
 def plot_fluxfraction_hist_allbeam(flux_diff_path, tod=True, rms_sys=None, ymin=1.e-4, ymax=0.60):
 
-    fig = plt.figure(figsize = (9, 6))
-    gs = gridspec.GridSpec(1, 3, figure=fig, top=0.95, bottom=0.1, left=0.12, right=0.95,
-                           wspace=0.01, hspace=0.01)
+    #fig = plt.figure(figsize = (9, 6))
+    #gs = gridspec.GridSpec(1, 3, figure=fig, top=0.95, bottom=0.1, left=0.12, right=0.95,
+    #                       wspace=0.01, hspace=0.01)
+
+    fig = plt.figure(figsize = (6, 12))
+    gs = gridspec.GridSpec(3, 1, figure=fig, top=0.98, bottom=0.05, left=0.12, right=0.95,
+                           wspace=0.03, hspace=0.03)
 
     ax =fig.add_subplot(gs[0, 0])
     beam_list = [1, ]
     plot_flux_hist(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys,
                    bins=np.linspace(-0.99, 0.99,31),
                    ymin=ymin,ymax=ymax, tod=tod, diff_fraction=True)
-    #ax.set_xticklabels([])
+    ax.set_xticklabels([])
     #ax.set_xlabel('NVSS Flux at 20cm (mJy)')
-    ax.set_xlabel(r'$ \delta S $')
+    #ax.set_xlabel(r'$ \delta S $')
     ax.set_ylabel(r'$N/N_{\rm total}$')
 
-    ax =fig.add_subplot(gs[0, 1])
+    ax =fig.add_subplot(gs[1, 0])
     beam_list = [2, 3, 4, 5, 6, 7]
     plot_flux_hist(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys,
                    bins=np.linspace(-0.99, 0.99,31),
                    ymin=ymin,ymax=ymax, tod=tod, diff_fraction=True)
     #ax.set_xlabel('NVSS Flux at 20cm (mJy)')
     #ax.set_ylabel('Measured Flux at 1400 MHz (mJy)')
-    #ax.set_xticklabels([])
+    ax.set_xticklabels([])
     #ax.set_xlabel(r'$ S - S_{\rm NVSS} ~ [{\rm mJy}]$')
-    ax.set_xlabel(r'$ \delta S $')
-    ax.set_yticklabels([])
+    #ax.set_xlabel(r'$ \delta S $')
+    #ax.set_yticklabels([])
+    ax.set_ylabel(r'$N/N_{\rm total}$')
 
-    ax =fig.add_subplot(gs[0, 2])
+    ax =fig.add_subplot(gs[2, 0])
     beam_list = [8, 9, 10, 11, 12, 13] + [14, 15, 16, 17, 18, 19]
     plot_flux_hist(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys,
                    bins=np.linspace(-0.99, 0.99,31), 
@@ -948,7 +963,8 @@ def plot_fluxfraction_hist_allbeam(flux_diff_path, tod=True, rms_sys=None, ymin=
     #ax.set_xlabel(r'$ S - S_{\rm NVSS} ~ [{\rm mJy}]$')
     ax.set_xlabel(r'$ \delta S $')
     #ax.set_ylabel(r'$N/N_{\rm total}$')
-    ax.set_yticklabels([])
+    ax.set_ylabel(r'$N/N_{\rm total}$')
+    #ax.set_yticklabels([])
 
     return fig
 
@@ -1067,14 +1083,14 @@ def plot_flux_beam(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
     #color=iter(cm.tab20(np.linspace(0,1,len(beam_list))))
     color=iter(cm.tab20(np.linspace(0,1,12)))
 
-    for label, x, y, e in iter_flux_beam(beam_list, flux_path_list, tod=tod):
+    for label, x, y, e, name in iter_flux_beam(beam_list, flux_path_list, tod=tod):
 
         good = ( x > 1.e-1 ) * ( y > 1.e-1 )
         x = x[good]
         y = y[good]
         e = e[good]
 
-        l = ax.plot(x, y, 'o', ms=4, color=next(color))[0]
+        l = ax.plot(x, y, 'o', ms=6, color=next(color))[0]
         #l = ax.errorbar(x, y, e, fmt='o', ms=4, color=next(color))[0]
         legend_list.append(mpatches.Patch(color=l.get_color(), label=label))
 
@@ -1097,21 +1113,23 @@ def plot_flux_beam(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
 
 def plot_flux_allbeam(flux_diff_path, tod=True, rms_sys=None, f_min=None, f_max=None):
 
-    fig = plt.figure(figsize = (9, 6))
-    gs = gridspec.GridSpec(1, 3, figure=fig, top=0.95, bottom=0.1, left=0.12, right=0.95,
-                           wspace=0.01, hspace=0.01)
+    fig = plt.figure(figsize = (6, 12))
+    #gs = gridspec.GridSpec(1, 3, figure=fig, top=0.95, bottom=0.1, left=0.05, right=0.98,
+    #                       wspace=0.03, hspace=0.03)
+    gs = gridspec.GridSpec(3, 1, figure=fig, top=0.98, bottom=0.05, left=0.12, right=0.95,
+                           wspace=0.03, hspace=0.03)
 
     ax =fig.add_subplot(gs[0, 0])
     beam_list = [1, ]
     plot_flux_beam(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys, 
             f_min=f_min, f_max=f_max, tod=tod)
-    #ax.set_xticklabels([])
+    ax.set_xticklabels([])
     #ax.set_xlabel('NVSS Flux at 20cm (mJy)')
     #ax.set_xlabel('NVSS Flux at 1400 MHz (mJy)')
-    ax.set_xlabel('NVSS Flux (mJy)')
+    #ax.set_xlabel('NVSS Flux (mJy)')
     ax.set_ylabel('Measured Flux (mJy)')
 
-    ax =fig.add_subplot(gs[0, 1])
+    ax =fig.add_subplot(gs[1, 0])
     beam_list = [2, 3, 4, 5, 6, 7]
     plot_flux_beam(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys, 
             f_min=f_min, f_max=f_max, tod=tod)
@@ -1119,16 +1137,20 @@ def plot_flux_allbeam(flux_diff_path, tod=True, rms_sys=None, f_min=None, f_max=
     #ax.set_ylabel('Measured Flux at 1400 MHz (mJy)')
     #ax.set_xticklabels([])
     #ax.set_xlabel('NVSS Flux at 1400 MHz (mJy)')
-    ax.set_xlabel('NVSS Flux (mJy)')
-    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+    #ax.set_xlabel('NVSS Flux (mJy)')
+    #ax.set_yticklabels([])
+    ax.set_ylabel('Measured Flux (mJy)')
 
-    ax =fig.add_subplot(gs[0, 2])
+    ax =fig.add_subplot(gs[2, 0])
     beam_list = [8, 9, 10, 11, 12, 13] + [14, 15, 16, 17, 18, 19]
     plot_flux_beam(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys, 
             f_min=f_min, f_max=f_max, tod=tod)
     ax.set_xlabel('NVSS Flux (mJy)')
     #ax.set_ylabel(r'$N/N_{\rm total}$')
-    ax.set_yticklabels([])
+    ax.set_ylabel('Measured Flux (mJy)')
+    #ax.set_yticklabels([])
+    ax.set_xlabel('NVSS Flux (mJy)')
 
     return fig
 
