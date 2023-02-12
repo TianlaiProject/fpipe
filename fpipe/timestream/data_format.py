@@ -224,10 +224,11 @@ class FASTh5_Spec(object):
     def load_data(self, data_file, data=None, freq_sel = [None, None]):
 
         with h5py.File(data_file, 'r') as fh: 
-            freqstart = fh.attrs['freqstart']
-            freqstep  = fh.attrs['freqstep']
-            freqn     = fh.attrs['nfreq']
-            freq = np.arange(freqn) * freqstep + freqstart
+            #freqstart = fh.attrs['freqstart']
+            #freqstep  = fh.attrs['freqstep']
+            #freqn     = fh.attrs['nfreq']
+            #freq = np.arange(freqn) * freqstep + freqstart
+            freq = fh['freq'][:]
             
             ants = fh['blorder'][:]
             

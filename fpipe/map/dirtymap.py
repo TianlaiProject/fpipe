@@ -66,6 +66,8 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
             'pol_select': (0, 2), # only useful for ts
             'freq_select' : (0, 4), 
 
+            'use_mask' : True,
+
             'save_cov' : False,
             'diag_cov' : False,
 
@@ -108,6 +110,10 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
             ts.local_vis_mask[:] += ns[:, None, None, :]
             #ns = ts['ns_on'][:]
             #ts.vis_mask[:] += ns[:, None, None, :]
+
+        if not self.params['use_mask']:
+            logger.info('Ignore tod mask')
+            ts.local_vis_mask[:] = False
 
         func = self.init_ps_datasets(ts)
 
@@ -235,7 +241,7 @@ class DirtyMap(timestream_task.TimestreamTask, mapbase.MapBase):
     def finish(self):
 
         if mpiutil.rank0:
-            print('Finishing MapMaking.')
+            logger.info('Finishing MapMaking.')
 
         mpiutil.barrier()
 

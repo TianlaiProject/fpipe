@@ -3,6 +3,7 @@
 from fpipe.map import algebra as al
 from fpipe.ps import fgrm
 from fpipe.point_source import source
+from fpipe.check import tsys
 
 import logging
 
@@ -37,7 +38,8 @@ _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360), 
         pix=3./60., field_center=[(165, 27.8), ], proj='ZEA', figsize=(14, 2),
         sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
-        nvss_path=None, verbose=True, cbar=True, colors='r', logscale=False):
+        nvss_path=None, verbose=True, cbar=True, colors='r', logscale=False,
+        freqdiff=False):
 
     with h5.File(map_name, 'r') as f:
         if verbose:
@@ -55,6 +57,17 @@ def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360),
     freq = freq[indx[-1]]
     imap = imap[indx]
     imap = np.ma.masked_equal(imap, 0)
+
+    if freqdiff:
+        imap, mask = tsys.rms_ABAB_map(imap, imap.mask)
+        imap = np.ma.masked_equal(imap, 0)
+        freq = freq[:imap.shape[0] * 4]
+        freq.shape = (-1, 4)
+        freq = np.mean(freq, axis=1)
+
+        std  = np.ma.std(imap)
+        print('RMS [dfreq]: %10.8f K [%10.8f MHz]'%(std, (freq[1]-freq[0])/4.))
+
     if isinstance( indx[-1], slice):
         if map_key == 'noise_diag':
             imap = np.ma.mean(imap, axis=0)
@@ -111,6 +124,7 @@ def _plot_map_hp_multi(imap, pixs, nside, imap_shp = (600, 360), axes=None,
     if sigma is not None:
         mean = np.ma.mean(imap_full)
         std  = np.ma.std(imap_full)
+        print('RMS [full freq]: %10.8f K '%(std))
         vmin = mean - sigma * std
         vmax = mean + sigma * std
     #else:
@@ -343,6 +357,24 @@ def load_maps(dm_path, dm_file, name='clean_map'):
             mask = None
 
     return imap, ra, dec, ra_edges, dec_edges, freq, mask
+
+def load_maps_hp(dm_path, dm_file, name='clean_map'):
+
+    with h5.File(dm_path + dm_file, 'r') as f:
+        imap = al.load_h5(f, 'clean_map')
+        #imap = al.make_vect(imap, axis_names = imap.info['axes'])
+        imap = al.make_vect(imap)
+        nside = f['nside'][()]
+        pixs = f['map_pix'][:]
+        freq = imap.get_axis('freq')
+
+        try:
+            mask = f['mask'][:]
+        except KeyError:
+            #print('No mask')
+            mask = None
+
+    return imap, pixs, freq, mask
 
 def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             xlim=None, ylim=None, logscale=False,

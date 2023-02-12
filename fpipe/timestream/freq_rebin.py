@@ -18,6 +18,9 @@ from caput import mpiarray
 from tlpipe.utils.np_util import unique, average
 
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Rebin(timestream_task.TimestreamTask):
     """Rebin the frequency channels.
 
@@ -82,8 +85,10 @@ class Rebin(timestream_task.TimestreamTask):
             ts.create_main_axis_ordered_dataset(axis_order, 'vis_mask', vis_mask, axis_order, recreate=True, copy_attrs=True)
             ts.create_freq_ordered_dataset('freq', freq, recreate=True, copy_attrs=True, check_align=True)
 
-            print(('freq resolution reduced from %s to %f MHz (%d - %d)'%(
-                   dfreq_raw,  freq[1] - freq[0], nfreq_raw, freq.shape[0])))
+            dfreq = nfreq * ts.attrs['freqstep'] / bin_number
+            msg = 'freq resolution reduced from %s to %f MHz (%d - %d)'%(
+                   dfreq_raw,  dfreq, nfreq_raw, freq.shape[0])
+            logger.info(msg)
 
             # for other freq_axis datasets
             for name in list(ts.freq_ordered_datasets.keys()):

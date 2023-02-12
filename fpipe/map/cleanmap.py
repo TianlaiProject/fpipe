@@ -45,7 +45,7 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
 
         super(CleanMap, self).__init__(*args, **kwargs)
 
-        #mapbase.MultiMapBase.__init__(self)
+        mapbase.MultiMapBase.__init__(self)
 
     def read_input(self):
 
@@ -123,7 +123,6 @@ class CleanMap(OneAndOne, mapbase.MultiMapBase):
         if mpiutil.rank0:
             print('Finishing CleanMapMaking.')
 
-
         mpiutil.barrier()
         super(CleanMap, self).finish()
 
@@ -177,15 +176,22 @@ def combine_maps(map_path, map_name_list, ra_range, dec_range, output_name=None)
     ra_min, ra_max   = ra_range
     dec_min, dec_max = dec_range
 
-    full_map_pix = None
-    full_map = None
-    full_wet = None
+    full_map_pix = []
     #mask = None
 
-    v1 = hp.ang2vec(np.pi/2 - np.radians(dec_min), np.radians(ra_min))
-    v2 = hp.ang2vec(np.pi/2 - np.radians(dec_min), np.radians(ra_max))
-    v3 = hp.ang2vec(np.pi/2 - np.radians(dec_max), np.radians(ra_max))
-    v4 = hp.ang2vec(np.pi/2 - np.radians(dec_max), np.radians(ra_min))
+    for map_name in map_name_list:
+        with h5py.File(map_path + map_name, 'r') as f:
+            full_map_pix += list(f['map_pix'][:])
+            imap = al.load_h5(f, 'clean_map')
+
+    full_map_pix = np.sort(np.array(list(set(full_map_pix))))
+    full_map     = np.zeros(imap.shape[:1] + full_map_pix.shape, dtype=imap.dtype)
+    full_wet     = np.zeros(imap.shape[:1] + full_map_pix.shape, dtype=imap.dtype)
+
+    #v1 = hp.ang2vec(np.pi/2 - np.radians(dec_min), np.radians(ra_min))
+    #v2 = hp.ang2vec(np.pi/2 - np.radians(dec_min), np.radians(ra_max))
+    #v3 = hp.ang2vec(np.pi/2 - np.radians(dec_max), np.radians(ra_max))
+    #v4 = hp.ang2vec(np.pi/2 - np.radians(dec_max), np.radians(ra_min))
 
     for map_name in map_name_list:
         with h5py.File(map_path + map_name, 'r') as f:
@@ -203,10 +209,10 @@ def combine_maps(map_path, map_name_list, ra_range, dec_range, output_name=None)
             #    mask  = f['mask'][:]
             #else:
             #    mask += f['mask'][:]
-        if full_map_pix is None:
-            full_map_pix = hp.query_polygon(nside, np.array([v1, v2, v3, v4]))
-            full_map = np.zeros(imap.shape[:1] + full_map_pix.shape )
-            full_wet = np.zeros(imap.shape[:1] + full_map_pix.shape )
+        #if full_map_pix is None:
+        #    full_map_pix = hp.query_polygon(nside, np.array([v1, v2, v3, v4]))
+        #    full_map = np.zeros(imap.shape[:1] + full_map_pix.shape )
+        #    full_wet = np.zeros(imap.shape[:1] + full_map_pix.shape )
         _idx = np.searchsorted(full_map_pix, pix)
         good = (_idx < full_map_pix.shape[0]) * (_idx >=0)
         nmap[nmap==0] = np.inf

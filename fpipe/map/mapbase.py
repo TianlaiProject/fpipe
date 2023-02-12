@@ -67,8 +67,10 @@ class MultiMapBase(object):
     #    self.df_in  = []
     #    self.df_out = []
 
-    df_in  = []
-    df_out = []
+    def __init__(self):
+
+        self.df_in  = []
+        self.df_out = []
 
     def __del__(self):
 
@@ -79,7 +81,6 @@ class MultiMapBase(object):
         for df in self.df_in:
             df.close()
             self.df_in.remove(df)
-
 
     def open(self, fname, mode='r'):
 

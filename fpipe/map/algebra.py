@@ -543,6 +543,15 @@ def load_h5(h5obj, path):
     iarray[:] = data[:]
     info = {}
     for key, value in data.attrs.items():
+        try:
+            key = key.decode()
+        except AttributeError:
+            pass
+
+        try:
+            value = value.decode()
+        except AttributeError:
+            pass
         info[key] = safe_eval(value)
     iarray = info_array(iarray, info)
     return iarray

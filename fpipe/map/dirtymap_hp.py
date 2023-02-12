@@ -68,7 +68,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
 
         freq = ts['freq']
         freq_c = freq[n_freq//2]
-        freq_d = freq[1] - freq[0]
+        freq_d = ts.attrs['freqstep'] #freq[1] - freq[0]
 
         field_centre = self.params['field_centre']
 
@@ -134,10 +134,12 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         if not isinstance(li, tuple): li = (li, )
         freq = ts.freq[gi[0]] * 1.e-3
         beam_fwhm = self.params['beam_fwhm_at21cm'] * 1.42 / freq
-        print("RANK%03d:"%mpiutil.rank + \
+        msg = "RANK%03d:"%mpiutil.rank + \
                 " Local  (" + ("%04d, "*len(li))%li + ")," +\
                 " Global (" + ("%04d, "*len(gi))%gi + ")"  +\
-                " at %5.4fGHz (fwhm = %4.3f deg)"%(freq, beam_fwhm))
+                " at %5.4fGHz (fwhm = %4.3f deg)"%(freq, beam_fwhm)
+        logger.info(msg)
+
         if vis.dtype == np.complex:
             vis = np.abs(vis)
 
@@ -180,6 +182,8 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
                 logger.debug(msg)
 
             _vis_mask = vis_mask[:, p_idx, b_idx]
+            #if np.any(_vis_mask):
+            #    print('Tod mask used')
             
             if np.all(_vis_mask):
                 print(" VIS (" + ("%03d, "*len(_vis_idx))%_vis_idx + ")" +\
@@ -204,7 +208,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
             for st in range(0, n_time, tblock_len):
                 et = st + tblock_len
 
-                timestream2map(_vis[st:et, ...],
+                timestream2map_grid(_vis[st:et, ...],
                                _vis_mask[st:et, ...],
                                vis_var[st:et, ...],
                                time[st:et],
@@ -233,6 +237,72 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         self.write_block_to_dset('cov_inv', map_idx, _ci)
         del _ci, _dm
         gc.collect()
+
+def timestream2map_grid(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
+        nside, ra_range, dec_range, cov_inv_block, dirty_map, diag_cov=False,
+        beam_size=3./60., center_only=False): 
+    
+    map_shp = pix_axis.shape
+    ra_centr, dec_centr = hp.pix2ang(nside, pix_axis, lonlat=True)
+    ra_centr  = ra_centr  * np.pi / 180.
+    dec_centr = dec_centr * np.pi / 180.
+    
+    beam_sig = beam_size  / (2. * np.sqrt(2.*np.log(2.)))
+
+    vis_mask = (vis_mask.copy()).astype('bool')
+    vis_one = np.array(vis_one)
+    vis_one[vis_mask] = 0.
+
+    _good  = ( ra  < max(ra_range))
+    _good *= ( ra  > min(ra_range))
+    _good *= ( dec < max(dec_range))
+    _good *= ( dec > min(dec_range))
+    _good *= ~vis_mask
+    if np.sum(_good) == 0: return
+
+    ra       = ra[_good]  * np.pi / 180.
+    dec      = dec[_good] * np.pi / 180.
+    vis_one  = vis_one[_good]
+    vis_mask = vis_mask[_good]
+    time     = time[_good]
+    vis_var  = vis_var[_good]
+    
+    logger.debug('est. pointing')
+
+    P = (np.sin(dec[:, None]) * np.sin(dec_centr[None, :]))\
+      + (np.cos(dec[:, None]) * np.cos(dec_centr[None, :]))\
+      * (np.cos(ra[:, None] - ra_centr[None, :]))
+
+    P  = np.arccos(P) * 180. / np.pi
+    P  = np.exp(- 0.5 * (P / beam_sig) ** 2)
+    
+    P.shape = (ra.shape[0], -1)
+
+    P[P < 0.01] = 0.
+    #P_norm = np.sum(P, axis=1)
+    #P_norm = np.max(P, axis=1)
+    #P_norm[P_norm==0] = np.inf
+    #P /= P_norm[:, None]
+
+    vis_var[vis_var==0] = np.inf #T_infinity ** 2.
+    noise_inv_weight = 1. /vis_var
+
+    weight = noise_inv_weight
+
+    logger.debug('est. dirty map')
+    dirty_map += np.dot(P.T, vis_one * weight)
+
+    logger.debug('est. noise inv')
+    if diag_cov:
+        #cov_inv_block += np.diag(multi_dot([P.T, weight, P]))
+        cov_inv_block += np.dot(P.T, weight)
+    else:
+        raise('gridding need diag_cov=True')
+        #weight = np.eye(vis_one.shape[0]) * weight
+        #cov_inv_block += multi_dot([P.T, weight, P])
+
+    del weight, P
+    gc.collect()
         
 def timestream2map(vis_one, vis_mask, vis_var, time, ra, dec, pix_axis,
         nside, ra_range, dec_range, cov_inv_block, dirty_map, diag_cov=False,
@@ -343,9 +413,9 @@ def timestream2map_deconv(vis_one, vis_mask, vis_var, time, ra, dec,
     ra  = ra  * np.pi / 180.
     dec = dec * np.pi / 180.
 
-    P = (np.sin(ra[:, None]) * np.sin(ra_centr[None, :]))\
-      + (np.cos(ra[:, None]) * np.cos(ra_centr[None, :]))\
-      * (np.cos(dec[:, None] - dec_centr[None, :]))
+    P = (np.sin(dec[:, None]) * np.sin(dec_centr[None, :]))\
+      + (np.cos(dec[:, None]) * np.cos(dec_centr[None, :]))\
+      * (np.cos(ra[:, None] - ra_centr[None, :]))
 
     P  = np.arccos(P) * 180. / np.pi
     P  = np.exp(- 0.5 * (P / beam_sig) ** 2)
