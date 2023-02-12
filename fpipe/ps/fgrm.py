@@ -104,7 +104,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                                 dset_info = self.map_info)
             mask = np.ones(self.dset_shp[:1]).astype('bool')
             for ii in range(len(self.output_files)):
-                for key in self.df_out[ii][mode_key].keys():
+                for key in list(self.df_out[ii][mode_key].keys()):
                     self.df_out[-1][mode_key][:]\
                             += self.df_out[ii]['weight'][:]\
                             *  self.df_out[ii]['%s/%s'%(mode_key, key)][:]
@@ -141,8 +141,8 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
             tind_l = tuple(tind_l)
             tind_r = tuple(tind_r)
             tind_o = tind_o
-            print ("RANK %03d fgrm.\n(" + "%03d,"*len(tind_l) + ") x ("\
-                    + "%03d,"*len(tind_r) + ")\n")%((mpiutil.rank, ) + tind_l + tind_r)
+            print(("RANK %03d fgrm.\n(" + "%03d,"*len(tind_l) + ") x ("\
+                    + "%03d,"*len(tind_r) + ")\n")%((mpiutil.rank, ) + tind_l + tind_r))
 
             tind_list = [tind_l, tind_r]
             maps    = []
@@ -161,7 +161,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                 weight_key = self.params['weight_key'] #'noise_diag'
                 if weight_key is not None:
                     weight = al.load_h5(input[tind[0]], weight_key)
-                    if weight_key is 'noise_diag':
+                    if weight_key == 'noise_diag':
                         weight_prior = self.params['weight_prior']
                         logger.info('using wp %e'%weight_prior)
                         weight = make_noise_factorizable(weight, weight_prior)
@@ -199,15 +199,22 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                 _map_B_path, _map_B_name = os.path.split(os.path.splitext(_maps[1])[0])
                 logger.info('add real map pair (%s %s)'%(_map_A_name, _map_B_name))
                 with h5.File(os.path.join(_map_A_path,_map_A_name+'.h5'), 'r') as f:
-                    maps[0][:] += al.load_h5(f, 'cleaned_00mode/%s'%_map_B_name)
+                    _map0 = al.load_h5(f, 'cleaned_00mode/%s'%_map_B_name)
+                    maps[0][:] +=  _map0
                 with h5.File(os.path.join(_map_B_path,_map_B_name+'.h5'), 'r') as f:
-                    maps[1][:] += al.load_h5(f, 'cleaned_00mode/%s'%_map_A_name)
+                    _map1 = al.load_h5(f, 'cleaned_00mode/%s'%_map_A_name)
+                    maps[1][:] += _map1
 
             svd_info = self.svd_info
             if svd_info is None:
                 freq_cov, counts = find_modes.freq_covariance(maps[0], maps[1], 
                     weights[0], weights[1], freq_good, freq_good)
                 svd_info = find_modes.get_freq_svd_modes(freq_cov, np.sum(freq_good))
+
+            if self.params['add_map'] is not None:
+                maps[0][:] -=  _map0
+                maps[1][:] -=  _map1
+
 
             mode_list = self.mode_list
 
@@ -246,7 +253,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
                     self.df_out[tind_r[0]][dset_key][:] = copy.deepcopy(maps[1])
 
                 # for the case of auto with different svd svd modes
-                if 'Combined' in self.df_out[tind_r[0]][group_name].keys():
+                if 'Combined' in list(self.df_out[tind_r[0]][group_name].keys()):
                     dset_key = group_name + 'Combined'
                     _map = maps[0].copy() * weights[0].copy()\
                          + maps[1].copy() * weights[1].copy()
@@ -265,7 +272,7 @@ class FGRM_SVD(pipeline.OneAndOne, mapbase.MultiMapBase):
 
     def finish(self):
         #if mpiutil.rank0:
-        print 'RANK %03d Finishing FGRM'%(mpiutil.rank)
+        print('RANK %03d Finishing FGRM'%(mpiutil.rank))
 
         mpiutil.barrier()
         for df in self.df_out:
@@ -351,18 +358,23 @@ class FGRM_SVD_Auto(FGRM_SVD):
                 input_file_name_jj = self.params['svd_key'][1]
             tind_l = (ii, )
             tind_r = (ii, )
-            tind_o = [input_file_name_ii, input_file_name_jj]
-            task_list.append([tind_l, tind_r, tind_o])
 
             for kk in self.mode_list:
-                self.create_dataset(ii, 'cleaned_%02dmode/'%kk + input_file_name_ii, 
-                        dset_shp = map_tmp.shape, dset_info = map_tmp.info)
                 if input_file_name_jj != input_file_name_ii:
+                    tind_o = [input_file_name_ii, input_file_name_jj]
+                    self.create_dataset(ii, 'cleaned_%02dmode/'%kk + input_file_name_ii, 
+                        dset_shp = map_tmp.shape, dset_info = map_tmp.info)
                     self.create_dataset(ii, 'cleaned_%02dmode/'%kk + input_file_name_jj, 
                         dset_shp = map_tmp.shape, dset_info = map_tmp.info)
                     #print 'cleaned_%02dmode/Combined'%kk
                     self.create_dataset(ii, 'cleaned_%02dmode/Combined'%kk, 
                         dset_shp = map_tmp.shape, dset_info = map_tmp.info)
+                else:
+                    tind_o = ['cmap', 'cmap']
+                    self.create_dataset(ii, 'cleaned_%02dmode/cmap'%kk, 
+                        dset_shp = map_tmp.shape, dset_info = map_tmp.info)
+
+            task_list.append([tind_l, tind_r, tind_o])
 
             self.create_dataset(ii, 'weight', dset_shp = map_tmp.shape,
                                 dset_info = map_tmp.info)
@@ -410,7 +422,7 @@ def make_noise_factorizable(noise, weight_prior=1.e3):
     
     weight_prior used to be 10^-30 before prior applied
     """
-    print "making the noise factorizable"
+    print("making the noise factorizable")
     
     #noise[noise < weight_prior] = 1.e-30
     #noise = 1. / noise
@@ -454,7 +466,7 @@ def degrade_resolution(maps, noises, conv_factor=1.2, mode="constant",
 
     mode is the ndimage.convolve flag for behavior at the edge
     """
-    print "degrading the resolution to a common beam: ", conv_factor
+    print("degrading the resolution to a common beam: ", conv_factor)
     noise1, noise2 = noises
     map1, map2 = maps
 

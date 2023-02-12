@@ -9,7 +9,7 @@ from astropy import units as u
 from astropy.time import Time
 from astropy.coordinates import SkyCoord, EarthLocation
 
-from tlpipe.pipeline import pipeline
+from fpipe.pipeline import pipeline
 from tlpipe.utils.path_util import output_path
 from caput import mpiutil
 
@@ -19,7 +19,7 @@ from cora.signal import corr21cm
 from fpipe.sim import lognorm
 from fpipe.map import mapbase
 
-import beam
+from . import beam
 
 #from pipeline.Observatory.Receivers import Noise
 __nu21__ = 1420.40575177
@@ -28,6 +28,11 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
 
     params_init = {
             'prefix'        : 'MeerKAT3',
+
+            'pk_in': True,
+            'psfile' : None,
+            'psredshift' : 0.,
+            'EoR' : False,
 
 
             'freq' : np.linspace(950, 1350, 32), 
@@ -54,6 +59,8 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
             'lognorm' : False,
             'beam_file' : None,
 
+            'random_seed' : 3935040887,
+
             }
 
     prefix = 'csim_'
@@ -63,10 +70,12 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         super(CubeSim, self).__init__(*args, **kwargs)
         mapbase.MapBase.__init__(self)
 
-        if self.params['lognorm']:
-            self.corr = lognorm.LogNormal
+        if self.params['EoR']:
+            self.corr = lognorm.EoR(psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
+        elif self.params['lognorm']:
+            self.corr = lognorm.LogNormal(psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
         else:
-            self.corr = corr21cm.Corr21cm
+            self.corr = lognorm.Normal(psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
 
     def setup(self):
 
@@ -77,7 +86,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
 
         if self.params['map_tmp'] is None:
 
-            freq  = self.params['freq'] * 1.e6
+            freq  = self.params['freq'] #* 1.e6
             freq_d = freq[1] - freq[0]
             freq_n = freq.shape[0]
             freq_c = freq[freq_n//2]
@@ -121,18 +130,18 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         #self.beam_freq = np.array([900, 1100, 1400]) #* 1.e6
         if self.params['beam_file'] is not None:
             _bd = np.loadtxt(self.params['beam_file'])
-            self.beam_freq = _bd[:, 0] * 1.e6
+            self.beam_freq = _bd[:, 0] #* 1.e6
             self.beam_data = _bd[:, 1]
         else:
             fwhm1400=0.9
             self.beam_freq = np.linspace(800., 1600., 500).astype('float')
             self.beam_data = 1.2 * fwhm1400 * 1400. / self.beam_freq
-            self.beam_freq *= 1.e6
+            #self.beam_freq *= 1.e6
 
-        random.seed(3936650408)
+        random.seed(self.params['random_seed'])
         seeds = random.random_integers(100000000, 1000000000, mpiutil.size)
         self.seed = seeds[mpiutil.rank]
-        print "RANK: %02d with random seed [%d]"%(mpiutil.rank, self.seed)
+        print("RANK: %02d with random seed [%d]"%(mpiutil.rank, self.seed))
         random.seed(self.seed)
 
 
@@ -149,9 +158,10 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         if self.iter == self.iter_num:
             mpiutil.barrier()
             #self.close_outputfiles()
+            #next(super(CubeSim, self))
             super(CubeSim, self).next()
 
-        print "rank %03d, %03d"%(mpiutil.rank, self.iter_list[self.iter])
+        print("rank %03d, %03d"%(mpiutil.rank, self.iter_list[self.iter]))
 
         self.realize_simulation()
         if 'delta' in self.outfiles:
@@ -171,30 +181,39 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         """do basic handling to call Richard's simulation code
         this produces self.sim_map and self.sim_map_phys
         """
+        # corr.like_kiyo_map requires frequency in Hz
+        self.map_tmp.info['freq_delta']  *= 1.e6
+        self.map_tmp.info['freq_centre'] *= 1.e6
+
         if self.scenario == "nostr":
-            print "running dd+vv and no streaming case"
+            print("running dd+vv and no streaming case")
             #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp)
-            simobj = self.corr.like_kiyo_map(self.map_tmp)
+            simobj = self.corr.like_kiyo_map(self.map_tmp, psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
             maps = simobj.get_kiyo_field_physical(refinement=self.refinement)
 
         else:
             if self.scenario == "str":
-                print "running dd+vv and streaming simulation"
+                print("running dd+vv and streaming simulation")
                 #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp,
                 simobj = self.corr.like_kiyo_map(self.map_tmp,
-                                           sigma_v=self.streaming_dispersion)
+                                           sigma_v=self.streaming_dispersion, psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
 
                 maps = simobj.get_kiyo_field_physical(refinement=self.refinement)
 
             if self.scenario == "ideal":
-                print "running dd-only and no mean simulation"
+                print("running dd-only and no mean simulation")
                 #simobj = corr21cm.Corr21cm.like_kiyo_map(self.map_tmp)
-                simobj = self.corr.like_kiyo_map(self.map_tmp)
+                simobj = self.corr.like_kiyo_map(self.map_tmp, psfile=self.params['psfile'], redshift=self.params['psredshift'], pk_input=self.params['pk_in'])
                 maps = simobj.get_kiyo_field_physical(
                                             refinement=self.refinement,
                                             density_only=True,
                                             no_mean=True,
                                             no_evolution=True)
+
+        # corr.like_kiyo_map requires frequency in Hz
+        # chenge back to MHz for the rest
+        self.map_tmp.info['freq_delta']  /= 1.e6
+        self.map_tmp.info['freq_centre'] /= 1.e6
 
         self.simobj = simobj
         self.kk_input = np.logspace(-2, 0, 200)
@@ -233,14 +252,14 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
 
     def make_delta_sim(self):
         r"""this produces self.sim_map_delta"""
-        print "making sim in units of overdensity"
-        freq_axis = self.sim_map.get_axis('freq')  / 1.e6
+        print("making sim in units of overdensity")
+        freq_axis = self.sim_map.get_axis('freq')  #/ 1.e6
         z_axis = __nu21__ / freq_axis - 1.0
 
         #simobj = corr21cm.Corr21cm()
         #simobj = self.corr()
         simobj = self.simobj
-        T_b = simobj.T_b(z_axis) * 1e-3
+        T_b = simobj.T_b(z_axis) #* 1e-3
 
         self.sim_map_delta = copy.deepcopy(self.sim_map)
         self.sim_map_delta /= T_b[:, np.newaxis, np.newaxis]
@@ -248,7 +267,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
     def make_optical_sim(self):
 
         if self.params['selection'] is None:
-            print 'optical sim need selection function, pass'
+            print('optical sim need selection function, pass')
             return
         else:
             with h5py.File(self.params['selection'], 'r') as f:
@@ -292,7 +311,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
 
     def convolve_by_beam(self):
         r"""this produces self.sim_map_withbeam"""
-        print "convolving simulation by beam"
+        print("convolving simulation by beam")
         beamobj = beam.GaussianBeam(self.beam_data, self.beam_freq)
         self.sim_map_withbeam = beamobj.apply(self.sim_map)
 
@@ -310,8 +329,8 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
         dset_info['type'] = 'vect'
         dset_info['mock_delta']  = 1
         dset_info['mock_centre'] = self.params['mock_n']//2
-        dset_info['freq_delta']  = self.map_tmp.info['freq_delta'] / 1.e6
-        dset_info['freq_centre'] = self.map_tmp.info['freq_centre'] / 1.e6
+        dset_info['freq_delta']  = self.map_tmp.info['freq_delta'] #/ 1.e6
+        dset_info['freq_centre'] = self.map_tmp.info['freq_centre'] #/ 1.e6
         dset_info['ra_delta']    = self.map_tmp.info['ra_delta']
         dset_info['ra_centre']   = self.map_tmp.info['ra_centre']
         dset_info['dec_delta']   = self.map_tmp.info['dec_delta']
@@ -343,7 +362,7 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
             output_file = output_prefix + '_%03d_%s.h5'%(mock_idx, outfile)
             output_file = output_path(output_file, relative=True)
             #self.allocate_output(output_file, 'w')
-            if outfile is 'optsim':
+            if outfile == 'optsim':
                 map_key = 'delta'
                 weight_key = 'separable'
                 map_name = 'sim_map_optsim'
@@ -366,10 +385,10 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
                 d = f.create_dataset(map_key, _map_shp, dtype=self.map_tmp.dtype)
                 _d = getattr(self, map_name)
                 d[:] = _d[map_slice]
-                for key, value in self.map_tmp.info.iteritems():
+                for key, value in self.map_tmp.info.items():
                     d.attrs[key] = repr(value)
-                d.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] / 1.e6 )
-                d.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'] / 1.e6 )
+                d.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] )
+                d.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'] )
                 #d.attrs['ra_delta']    = repr(self.map_tmp.info['ra_delta']) 
                 #d.attrs['ra_centre']   = repr(self.map_tmp.info['ra_centre'])
                 #d.attrs['dec_delta']   = repr(self.map_tmp.info['dec_delta'])
@@ -381,10 +400,10 @@ class CubeSim(pipeline.TaskBase, mapbase.MapBase):
                     #d[:] *= mask
                     n = f.create_dataset(weight_key, _map_shp, dtype=self.map_tmp.dtype)
                     n[:] = getattr(self, weight_name)[map_slice]
-                    for key, value in self.map_tmp.info.iteritems():
+                    for key, value in self.map_tmp.info.items():
                         n.attrs[key] = repr(value)
-                    n.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] / 1.e6)
-                    n.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'] / 1.e6)
+                    n.attrs['freq_delta']  = repr(self.map_tmp.info['freq_delta'] )
+                    n.attrs['freq_centre'] = repr(self.map_tmp.info['freq_centre'])
                     #n.attrs['ra_delta']    = repr(self.map_tmp.info['ra_delta'])
                     #n.attrs['ra_centre']   = repr(self.map_tmp.info['ra_centre'])
                     #n.attrs['dec_delta']   = repr(self.map_tmp.info['dec_delta'])
@@ -438,7 +457,7 @@ class TransferSim(CubeSim):
             output_file = output_prefix + '_%03d_%s.h5'%(mock_idx, outfile)
             output_file = output_path(output_file, relative=True)
             #self.allocate_output(output_file, 'w')
-            if outfile is 'optsim':
+            if outfile == 'optsim':
                 map_key = 'delta'
                 weight_key = 'separable'
                 map_name = 'sim_map_optsim'
@@ -456,7 +475,7 @@ class TransferSim(CubeSim):
                                      self.map_tmp.shape, 
                                      dtype=self.map_tmp.dtype)
                 d[:] = getattr(self, map_name)
-                for key, value in self.map_tmp.info.iteritems():
+                for key, value in self.map_tmp.info.items():
                     d.attrs[key] = repr(value)
 
                 if hasattr(self, weight_name):
@@ -467,7 +486,7 @@ class TransferSim(CubeSim):
                                          self.map_tmp.shape, 
                                          dtype=self.map_tmp.dtype)
                     n[:] = getattr(self, weight_name)
-                    for key, value in self.map_tmp.info.iteritems():
+                    for key, value in self.map_tmp.info.items():
                         n.attrs[key] = repr(value)
 
 class ScanMode(object):

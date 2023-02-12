@@ -1,0 +1,41 @@
+# -*- mode: python; -*-
+#
+from fpipe.map import dirtymap_hp, cleanmap
+from fpipe.timestream.data_base import DATA_BASE as DB
+import os
+import numpy as np
+
+suffix = os.getenv('BAND')
+map_id = int(os.getenv('MAPID'))
+
+data_base = '/home/DATA/ycli/fanalysis/'
+
+pipe_tasks = []
+pipe_outdir = data_base
+pipe_logging = 'info' #'debug' #'info'
+pipe_copy = False
+pipe_feedback = 0
+pipe_timing = True
+
+map_prefix = 'map_df28k_2021'
+
+DATA_list = [
+    'HIMGS_1100+2600_20210302',
+    'HIMGS_1100+2610_20210309',
+    'HIMGS_1100+2610_20210314',
+    'HIMGS_1100+2621_20210313',
+    'HIMGS_1100+2632_20210305',
+    'HIMGS_1100+2643_20210306',
+    'HIMGS_1100+2654_20210307',
+]
+
+input_maps = []
+for f in DATA_list:
+    input_maps.append( '%s/dm_%02d_%s%s_vis.h5'%(map_prefix, map_id, f, suffix) )
+
+pipe_tasks.append(cleanmap.CleanMap)
+
+cm_input_files = input_maps
+cm_output_files  = ['%s/cm_%02d_Combined%s_vis.h5'%(map_prefix, map_id, suffix), ]
+cm_healpix = True
+cm_threshold = 1.e-2

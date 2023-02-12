@@ -205,12 +205,13 @@ class TimestreamTask(OneAndOne):
         else:
             output_files = self.output_files
 
-        try:
-            output.to_files(output_files, exclude, check_status, write_hints, libver, chunk_vis, chunk_shape, chunk_size)
-        except Exception as e:
-            if output_failed_continue:
-                msg = 'Process %d writing output to files failed...' % mpiutil.rank
-                logger.warning(msg)
-                traceback.print_exc(file=sys.stdout)
-            else:
-                raise e
+        output.to_files(output_files, exclude, check_status, write_hints, libver, chunk_vis, chunk_shape, chunk_size)
+        #try:
+        #    output.to_files(output_files, exclude, check_status, write_hints, libver, chunk_vis, chunk_shape, chunk_size)
+        #except Exception as e:
+        #    if output_failed_continue:
+        #        msg = 'Process %d writing output to files failed...' % mpiutil.rank
+        #        logger.warning(msg)
+        #        traceback.print_exc(file=sys.stdout)
+        #    else:
+        #        raise e

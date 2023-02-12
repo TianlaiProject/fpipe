@@ -12,14 +12,14 @@ from tlpipe.utils.path_util import output_path
 from fpipe.map import mapbase
 from fpipe.map import algebra as al
 from fpipe.utils import physical_gridding as gridding
-from fpipe.utils import binning
+from fpipe.utils import binning, fftutil
 
 from fpipe.ps import pwrspec_estimator as pse, fgrm
 
 logger = logging.getLogger(__name__)
 
-physical_grid = gridding.physical_grid_lf
-#physical_grid = gridding.physical_grid
+#physical_grid = gridding.physical_grid_lf
+physical_grid = gridding.physical_grid
 
 
 class PowerSpectrum(OneAndOne, mapbase.MapBase):
@@ -199,23 +199,13 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                     _mean = np.ma.mean(np.ma.masked_equal(input_map, 0), axis=(1, 2))
                     input_map -= _mean[:, None, None]
                     input_map[input_map_mask] = 0.
+                #wf = fftutil.window_nd(input_map.shape, 'blackman')
+                #input_map *= wf
                 input_map = al.make_vect(input_map, axis_names = ['freq', 'ra', 'dec'])
                 for key in input_map.info['axes']:
                     input_map.set_axis_info(key,
                                             self.map_info[key+'_centre'],
                                             self.map_info[key+'_delta'])
-
-                weight_key = self.params['weight_key'][i]
-                if weight_key is not None:
-                    weight = input[tind[0]][weight_key][tind[1:] + (slice(None), )]
-                    weight[input_map_mask] = 0.
-                    if weight_key == 'noise_diag':
-                        weight = fgrm.make_noise_factorizable(weight)
-                    if weight_key == 'separable':
-                        logger.debug('apply FKP weight')
-                        weight = weight / (1. + weight * self.params['FKP'])
-                    weight = al.make_vect(weight, axis_names = ['freq', 'ra', 'dec'])
-                    weight.info = input_map.info
 
                 if not self.params['cube_input'][i]:
                     c, c_info = physical_grid(input_map, refinement=refinement,order=0)
@@ -226,21 +216,31 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
 
                 cube.append(c)
 
+                weight_key = self.params['weight_key'][i]
                 if weight_key is not None:
-                    if not self.params['cube_input'][i]:
-                        cw, cw_info = physical_grid(weight, refinement=refinement,order=0)
-                    else:
-                        cw = weight
-                        cw_info = None
-                    #cw[c==0] = 0.
-                    cube_w.append(cw)
-                    del weight
+                    weight = input[tind[0]][weight_key][tind[1:] + (slice(None), )]
+                    weight[input_map_mask] = 0.
+                    if weight_key == 'noise_diag':
+                        weight = fgrm.make_noise_factorizable(weight)
+                    if weight_key == 'separable':
+                        logger.debug('apply FKP weight')
+                        weight = weight / (1. + weight * self.params['FKP'])
                 else:
-                    cw = al.ones_like(c)
-                    cw[c==0] = 0.
-                    cube_w.append(cw)
+                    weight = np.ones_like(input_map)
 
-                del c, c_info, cw, input_map
+                #wf = fftutil.window_nd(input_map.shape, 'blackman')
+                #weight *= wf
+                weight = al.make_vect(weight, axis_names = ['freq', 'ra', 'dec'])
+                weight.info = input_map.info
+
+                if not self.params['cube_input'][i]:
+                    cw, cw_info = physical_grid(weight, refinement=refinement,order=0)
+                else:
+                    cw = weight
+                    cw_info = None
+                cube_w.append(cw)
+
+                del weight, c, c_info, cw, input_map
 
                 if tind_l == tind_r:
                     cube.append(cube[0])

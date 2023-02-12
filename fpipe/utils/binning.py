@@ -72,7 +72,7 @@ def suggest_bins(input_array, truncate=True, nbins=40, logbins=True,
         bins = np.linspace(radius_sorted[1], max_r,
                            num=(nbins + 1), endpoint=True)
 
-    print "%d bins from %10.15g to %10.15g" % (nbins, radius_sorted[1], max_r)
+    print("%d bins from %10.15g to %10.15g" % (nbins, radius_sorted[1], max_r))
 
     return bins
 
@@ -177,8 +177,8 @@ def find_edges(axis, delta=None, logk=False):
 def print_edges(sample, edges, name):
     """print bin edges for a catalog
     """
-    print "Binning %s from range (%5.3g, %5.3g) into (%5.3g, %5.3g)" % (
-           name, min(sample), max(sample), min(edges), max(edges))
+    print("Binning %s from range (%5.3g, %5.3g) into (%5.3g, %5.3g)" % (
+           name, min(sample), max(sample), min(edges), max(edges)))
 
 
 def histogram3d(sample, xedges, yedges, zedges):
@@ -234,7 +234,7 @@ def histogram3d(sample, xedges, yedges, zedges):
         #                           np.arange(x_size)))
         #count_cube[split_indices] = count_array[count_index]
     except MemoryError:
-        print "histogram3d: all points out of the volume"
+        print("histogram3d: all points out of the volume")
 
     return count_cube
 

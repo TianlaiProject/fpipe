@@ -3,6 +3,8 @@ pipeline driver for runing within Jupyter notebook
 """
 from tlpipe.pipeline.pipeline import *
 
+import tlpipe
+
 class run_pipeline(object):
 
     def __init__(self, params):

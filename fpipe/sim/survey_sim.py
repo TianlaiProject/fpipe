@@ -4,9 +4,10 @@ import numpy as np
 import scipy as sp
 import healpy as hp
 import h5py
+from scipy import interpolate
 from astropy import units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord, EarthLocation
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz 
 
 from tlpipe.pipeline import pipeline
 from tlpipe.utils.path_util import output_path
@@ -14,8 +15,11 @@ from fpipe.map import algebra as al
 from fpipe.sim import multibeam as mb
 from fpipe.map import mapbase
 
+import pygsm
+
 from caput import mpiutil
 #from mpi4py import MPI
+
 
 import gc
 
@@ -46,6 +50,7 @@ class SurveySim(pipeline.TaskBase):
             #'obs_az_range' : 15. * u.deg, # for HorizonRasterDrift
 
             ##'beam_size' : 1. * u.deg, # FWHM
+            'beam_file' : None,
 
             #'block_time' : 1. * u.hour,
 
@@ -53,7 +58,7 @@ class SurveySim(pipeline.TaskBase):
 
             'freq' : np.linspace(950, 1350, 32), 
 
-            'fg_syn_model' : None,
+            'FG' : None,
             'HI_model' : None,
             'HI_bias'  : 1.0,
             'HI_model_type' : 'delta', # withbeam, raw, delta
@@ -88,42 +93,17 @@ class SurveySim(pipeline.TaskBase):
         self.ants_pos = np.concatenate(ants_pos, axis=1)
 
 
-        freq  = self.params['freq']
-        dfreq = freq[1] - freq[0]
-        freq_n = freq.shape[0]
-
         self.SM = globals()[self.params['survey_mode']](self.params['schedule_file'])
         #self.SM.generate_altaz(startalt, startaz, starttime, obs_len, obs_speed, obs_int)
         self.SM.generate_altaz()
         self.SM.radec_list([ant_dat['px'], ant_dat['py']])
 
-
-        #starttime = Time(self.params['starttime'])
-        #startalt, startaz  = self.params['startpointing']
-        #startalt *= u.deg
-        #startaz  *= u.deg
-        #obs_speed = self.params['obs_speed']
-
         obs_int   = self.SM.obs_int #self.params['obs_int']
         self.obs_int = obs_int
         samplerate = ((1./obs_int).to(u.Hz)).value
 
-        #obs_tot   = self.SM.obs_tot # self.params['obs_tot']
-        #obs_len   = int((obs_tot / obs_int).decompose().value) 
-
-        #self.block_time = self.SM.sche['block_time'] #self.params['block_time']
         self.block_time = np.array(self.SM.sche['block_time'])
-        #self.block_len  = int((block_time / obs_int).decompose().value)
         block_num  = self.block_time.shape[0]
-
-
-        _obs_int = (obs_int.to(u.second)).value
-        self._RMS = self.params['T_rec'] / np.sqrt(_obs_int * dfreq * 1.e6)
-
-        if self.params['fg_syn_model'] is not None:
-            self.syn_model = hp.read_map(
-                    self.params['fg_syn_model'], range(freq.shape[0]))
-            self.syn_model = self.syn_model.T
 
         if self.params['HI_model'] is not None:
             with h5py.File(self.params['HI_model'], 'r') as fhi:
@@ -135,12 +115,44 @@ class SurveySim(pipeline.TaskBase):
                     self.HI_mock_ids = list(self.params['HI_mock_ids'])
                     _HI_model = _HI_model[self.HI_mock_ids]
                 else:
-                    self.HI_mock_ids = range(_HI_model.shape[0])
+                    self.HI_mock_ids = list(range(_HI_model.shape[0]))
 
                 self.mock_n = _HI_model.shape[0]
                 self.HI_model = al.make_vect(_HI_model)
+                freq = self.HI_model.get_axis('freq')
+                logger.info('Using freq from HI model, freq [st=%f, ed=%f, N=%d]'%\
+                        (freq[0], freq[-1], freq.shape[0]))
         else:
             self.mock_n = self.params['mock_n']
+            freq  = self.params['freq']
+            self.HI_mock_ids = list(range(self.mock_n))
+
+        dfreq = freq[1] - freq[0]
+        freq_n = freq.shape[0]
+
+        _obs_int = (obs_int.to(u.second)).value
+        self._RMS = self.params['T_rec'] / np.sqrt(_obs_int * dfreq * 1.e6)
+
+
+        if self.params['FG']:
+            GSM = pygsm.GlobalSkyModel(freq_unit='MHz',basemap='haslam')
+            # global sky model in healpix format, NSIDE=512, in galactic coord,
+            # and in unit of K
+            self.syn_model = GSM.generate(freq).T
+
+            if self.params['beam_file'] is not None:
+                _bd = np.loadtxt(self.params['beam_file'])
+                beam_freq = _bd[:, 0]
+                beam_data = _bd[:, 1]
+            else:
+                fwhm1400=3./60.
+                beam_freq = np.linspace(800., 1600., 500).astype('float')
+                beam_data = 1.2 * fwhm1400 * 1400. / beam_freq
+
+            fwhm = interpolate.interp1d(beam_freq, beam_data)(freq)
+            for i in range(self.syn_model.shape[1]):
+                self.syn_model[:, i] = hp.smoothing(self.syn_model[:, i], 
+                        fwhm = fwhm[i] * np.pi / 180., verbose=i==0)
 
         if self.params['fnoise']:
             self.FN = fnoise.FNoise(dtime=obs_int.value, 
@@ -161,7 +173,7 @@ class SurveySim(pipeline.TaskBase):
 
         if self.iter == self.iter_num:
             mpiutil.barrier()
-            super(SurveySim, self).next()
+            next(super(SurveySim, self))
 
         mock_n = self.mock_n
 
@@ -182,12 +194,17 @@ class SurveySim(pipeline.TaskBase):
 
         _sky = np.zeros((mock_n, block_n, freq_n, len(self.ants))) + self.params['T_rec']
 
-        if self.params['fg_syn_model'] is not None:
+        if self.params['FG'] :
             logger.info( "add syn")
-            raise ValueError('fg mode not ready')
             syn_model_nside = hp.npix2nside(self.syn_model.shape[0])
-            _idx_pix = hp.ang2pix(syn_model_nside, ra_list.flat, dec_list.flat, lonlat=True)
-            _sky += self.syn_model[_idx_pix, :][None, ...] #/ 2.
+            for bb in range(radec_shp[1]):
+                c = SkyCoord(ra  = ra_list[:, bb].flatten()  * u.deg, 
+                             dec = dec_list[:, bb].flatten() * u.deg, 
+                             frame='icrs')
+                l = c.galactic.l.radian
+                b = c.galactic.b.radian
+                _idx_pix = hp.ang2pix(syn_model_nside, np.pi/2.0 - b, l, nest=False)
+                _sky[..., bb] += self.syn_model[_idx_pix, :][None, ...] #/ 2.
 
         if self.params['HI_model'] is not None:
             logger.info( "add HI")
@@ -336,7 +353,7 @@ class SurveySim(pipeline.TaskBase):
             df.attrs['timezone'] = 'UTC+02'  # 
             df.attrs['epoch'] = 2000.0  # year
 
-            df.attrs['telescope'] = 'MeerKAT-Dish-I' # 
+            df.attrs['telescope'] = b'MeerKAT-Dish-I' # 
             df.attrs['dishdiam'] = 13.5
             df.attrs['nants'] = vis.shape[-1]
             df.attrs['npols'] = vis.shape[-2]
@@ -487,7 +504,7 @@ class SurveySimToMap(SurveySim, mapbase.MultiMapBase):
                 hist = self.df_out[ii]['dirty_map'][:] 
                 norm[norm==0] = np.inf
                 self.df_out[ii]['clean_map'][:] = hist/norm
-            print 'Finishing CleanMapMaking.'
+            print('Finishing CleanMapMaking.')
 
         mpiutil.barrier()
         super(SurveySimToMap, self).finish()
@@ -605,7 +622,7 @@ class DriftScan(ScanMode):
         start_az_list  = np.array(self.sche['AZ']) * u.deg
         start_alt_list = np.array(self.sche['Alt']) * u.deg
         for ii in range(len(starttime_list)):
-            starttime = Time(starttime_list[ii])
+            starttime = Time(starttime_list[ii], scale='utc')
             alt_start = start_alt_list[ii]
             az_start  = start_az_list[ii]
             obs_len   = int((block_time[ii] / obs_int).decompose().value) 
@@ -667,3 +684,115 @@ class HorizonRasterDrift(ScanMode):
         self.az_list  = np.concatenate(az_list) * u.deg
         self.t_list   = Time(np.concatenate(t_list))
 
+
+class RealOBS(ScanMode):
+
+    def read_schedule(self, schedule_file):
+
+        self.obsfiles = []
+
+        with open(schedule_file) as f:
+            for l in f.readlines():
+                l = l.split()
+                if l[0] != '#': continue
+                if l[1] == 'Log.Lat.':
+                    self.site_lon = float(l[2]) * u.deg
+                    self.site_lat = float(l[3]) * u.deg
+
+        self.obsfiles = np.genfromtxt(schedule_file, dtype='S')
+
+    def generate_altaz(self):
+
+        block_time = []
+
+        self.t_list   = []
+        self.az_list  = []
+        self.alt_list = []
+
+        for fname in self.obsfiles:
+
+            with h5py.File(fname, 'r') as df:
+
+                inttime = df.attrs['inttime']
+                obstime = df.attrs['obstime']
+                ra_list = df['ra'][:, 0] * u.deg
+                dec_list= df['dec'][:, 0] * u.deg
+
+            self.obs_int = inttime * u.s
+
+            block_n = ra_list.shape[0]
+
+            obstime = obstime.replace('(UTC)', '')
+            obstime = obstime.replace('/', '-')
+            t_list  = Time(obstime)
+            t_list += np.arange(block_n) * inttime * u.s
+
+            _c = SkyCoord(ra=ra_list, dec=dec_list, frame='icrs')
+            _c = _c.transform_to(AltAz(obstime=t_list, location=self.location))
+
+            az_list  = _c.altaz.az.deg 
+            alt_list = _c.altaz.alt.deg
+
+            self.t_list.append(list(t_list.fits))
+            self.az_list.append(list(az_list))
+            self.alt_list.append(list(alt_list))
+            block_time.append(block_n * inttime)
+
+        self.t_list   = Time(np.concatenate(self.t_list), format='fits')
+        self.az_list  = np.concatenate(self.az_list) * u.deg
+        self.alt_list = np.concatenate(self.alt_list) * u.deg
+
+        self.sche = np.array(block_time, dtype=[('block_time', 'f8'), ])
+
+class RealOBSc(RealOBS):
+
+    def generate_altaz(self):
+
+        block_time = []
+
+        #self.t_list   = []
+        #self.az_list  = []
+        #self.alt_list = []
+
+        obstime = None
+        ra_list = []
+        dec_list = []
+        block_n = 0
+
+        for fname in self.obsfiles:
+
+            with h5py.File(fname, 'r') as df:
+
+                inttime = df.attrs['inttime']
+                _obstime = df.attrs['obstime']
+                ra = df['ra'][:, 0] #* u.deg
+                dec= df['dec'][:, 0] #* u.deg
+
+            self.obs_int = inttime * u.s
+
+            block_n += ra.shape[0]
+
+            _obstime = _obstime.replace('(UTC)', '')
+            _obstime = _obstime.replace('/', '-')
+            if obstime is None:
+                obstime = _obstime
+            elif obstime != _obstime:
+                raise ValueError('Obstime not the same')
+
+            ra_list  += list(ra)
+            dec_list += list(dec)
+
+        self.t_list  = Time(obstime)
+        self.t_list += np.arange(block_n) * self.obs_int
+
+        ra_list  = np.array(ra_list)  * u.deg
+        dec_list = np.array(dec_list) * u.deg
+
+
+        _c = SkyCoord(ra=ra_list, dec=dec_list, frame='icrs')
+        _c = _c.transform_to(AltAz(obstime=self.t_list, location=self.location))
+
+        self.az_list  = _c.altaz.az.deg  * u.deg
+        self.alt_list = _c.altaz.alt.deg * u.deg
+
+        self.sche = np.array([block_n * self.obs_int], dtype=[('block_time', 'f8'), ])

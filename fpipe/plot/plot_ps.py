@@ -26,15 +26,15 @@ _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
 
 def iter_ps_list(ps_path, ps_name_list, tr_path=None, cross=True, 
         to1d=False, from2d=True):
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     for ii in range(len(ps_keys)):
         ps_name = ps_name_list[ps_keys[ii]]
         if tr_path is not None:
             ps_name, tr_name = ps_name
-            if tr_name is not None:
-                tr_ref_name = os.path.dirname(tr_name) + '/ps_raw.h5'
-            else:
-                tr_path = None
+        #    if tr_name is not None:
+        #        tr_ref_name = os.path.dirname(tr_name) + '/ps_raw.h5'
+        #    else:
+        #        tr_path = None
 
         with h5.File(ps_path + ps_name, 'r') as f:
             
@@ -60,10 +60,14 @@ def iter_ps_list(ps_path, ps_name_list, tr_path=None, cross=True,
                 ps1d *= 1.e6
 
             if tr_path is not None:
-                tr = load_2dtr_from3d(ps_path, tr_name, tr_ref_name, 
-                        kbin_x_edges=x, kbin_y_edges=y)[0]
+
+                tr, x, y = load_2dtr(tr_path, tr_name, 'ps_raw.h5', 
+                        cross=cross, lognorm=False)
+                #tr = load_2dtr_from3d(ps_path, tr_name, tr_ref_name, 
+                #tr =    kbin_x_edges=x, kbin_y_edges=y)[0]
                 if not cross: tr  **= 2.
-                ps2d *= tr
+                tr[tr==0] = np.inf
+                ps2d /= tr
 
             if to1d:
                 ps1d_kbin_edges = f['kbin_edges'][:]
@@ -99,7 +103,7 @@ def _add_axes_1d(figsize, plot_null=False):
 
 def _add_axes_2d(figsize, ps_name_list, logk=True):
 
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ncol = len(ps_keys)
     fig = plt.figure(figsize=figsize)
     gs = gridspec.GridSpec(1, ncol, left=0.08, bottom=0.1, top=0.9, right=0.90,
@@ -210,7 +214,7 @@ def plot_1dps(ps_path, ps_name_list, tr_path=None, figsize=(8,6), title='',
 
     if lognorm: plot_null = False
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ps_n = len(ps_keys)
     shift = (np.arange(ps_n) - (float(ps_n) - 1.)/ 2.) * shift
 
@@ -300,7 +304,8 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
 
     #----------------------------
     if freq is None:
-        freq = np.arange(1050, 1150, 0.5)
+        #freq = np.arange(1050, 1150, 0.5)
+        freq = np.arange(700, 900, 0.5)
     zz = 1420./ freq - 1.
 
     if logk:
@@ -327,13 +332,13 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
         'logk': logk,
         'kh_edgs' : kh_edgs,
         'mu_edgs' : mu_edgs,
-        'S_area': 1000.,
+        'S_area': 100.,
         'T_sys' : Tsys * 1.e3,
         'pixel_size' : 1.,
         't_tot' : 100. * 3600.,
         'N_beam': 1.,
         'N_dish': 19.,
-        'D_dish': 3./60.,
+        'D_dish': 100., #300., #3./60.,
         'b_HI'  : b_HI,
         'b_g'   : b_g,
         'nbar'  : nbar * 1e-4,
@@ -346,10 +351,10 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
                 fisher.est_dP_cross(params, False, False, max_beam)
     else:
         kh, pkhi1d_c, pkn1d, dpk2pk, pkhi1d = \
-                fisher.est_dP_auto(params, False, False, max_beam)
+                fisher.est_dP_auto(params, True, False, max_beam)
     #pkhi1d   = pkhi1d   * kh**3./ (2.*np.pi**2)
     #pkhi1d_c = pkhi1d_c * kh**3./ (2.*np.pi**2)
-    #ax.plot(kh, pkhi1d, 'k--', drawstyle='steps-mid')
+    ax.plot(kh, pkhi1d, 'k--', drawstyle='steps-mid')
     label = r'$\Omega_{\rm HI}b_{\rm HI} = %3.2f \times 10^{-3}$'%b_HI
     if cross:
         label += ',' + r'$b_{g}=%2.1f$'%b_g
@@ -362,3 +367,86 @@ def plot_th(ax, kh, b_HI=1., b_g=1., nbar=3., Tsys=16, cross=True, freq=None,
     #        label=label)
 
     #----------------------------
+
+def load_2dtr(ps_path, ps_name, ps_ref, cross=False, lognorm=False):
+
+    with h5.File(ps_path + ps_ref, 'r') as f:
+        ps2d_ref = al.make_vect(al.load_h5(f, 'binavg_2d'))
+        ps2d_ref = np.mean(ps2d_ref, axis=0)
+        
+    with h5.File(ps_path + ps_name, 'r') as f:
+
+        ps2d = al.make_vect(al.load_h5(f, 'binavg_2d'))
+        ps2d = np.mean(ps2d, axis=0)
+        #ps2d = ps2d[3]
+        #ps3d[np.abs(ps3d)<1.e-20] = np.inf
+        #ps3d = ps3d * ps3d_ref.copy()
+
+        x = f['kbin_x_edges'][:]
+        y = f['kbin_y_edges'][:]
+
+    ps2d_ref[ps2d_ref==0] = np.inf
+    ps2d /= ps2d_ref
+    
+    #ps2d = np.mean(ps2d, axis=0)
+
+    if not cross:
+        ps2d = ps2d ** 0.5
+    ps2d = np.ma.masked_equal(ps2d, 0)
+    #ps2d[ps2d==0] = np.inf
+    #ps2d = 1./ps2d
+
+    return ps2d, x, y
+
+
+def plot_2dtr(ps_path, ps_name_list, ps_name_ref, 
+              figsize=(16, 4),title='', vmax=None, vmin=None, 
+              logk=True, cross=False, lognorm=False):
+
+    ps_keys = list(ps_name_list.keys())
+    cols = len(ps_keys)
+    fig = plt.figure(figsize=figsize)
+    fig.suptitle(title)
+    gs = gridspec.GridSpec(1, cols, left=0.08, bottom=0.1, top=0.9, right=0.90,
+            figure=fig, wspace=0.1)
+    cax = fig.add_axes([0.91, 0.2, 0.1/float(figsize[0]), 0.6])
+    ax = []
+
+    for ii in range(cols):
+        ps_name = ps_name_list[ps_keys[ii]]
+
+        ps2d, x, y = load_2dtr(ps_path, ps_name, ps_name_ref,
+                cross=cross, lognorm=lognorm)
+
+        xlim = [x.min(), x.max()]
+        ylim = [y.min(), y.max()]
+        if vmin is None:
+            vmin = np.min(ps2d)
+        if vmax is None:
+            vmax = np.max(ps2d)
+
+        ax = fig.add_subplot(gs[0,ii])
+        norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+        #norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+        im = ax.pcolormesh(x, y, ps2d.T, norm=norm, cmap='jet')
+        if logk:
+            ax.loglog()
+        if ii != 0:
+            ax.set_yticklabels([])
+        else:
+            ax.set_ylabel(r'$k_\parallel$')
+        ax.set_aspect('equal')
+        ax.tick_params(direction='in', length=2.5, width=1)
+        ax.tick_params(which='minor', direction='in', length=1.5, width=1)
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        ax.set_xlabel(r'$k_\perp$')
+
+        ax.set_title('%s'%ps_keys[ii])
+        
+    fig.colorbar(im, ax=ax, cax=cax)
+    cax.minorticks_off()
+    #cax.set_ylabel(r'$\Delta(k)[K^2]$')
+    cax.set_ylabel(r'$T(k)$')
+
+    return fig, ax

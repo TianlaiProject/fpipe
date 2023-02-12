@@ -381,7 +381,7 @@ def calculate_xspec_file(cube1_file, cube2_file, bins,
     else:
         weight2 = algebra.make_vect(algebra.load(weight2_file))
 
-    print cube1.shape, cube2.shape, weight1.shape, weight2.shape
+    print(cube1.shape, cube2.shape, weight1.shape, weight2.shape)
     return calculate_xspec(cube1, cube2, weight1, weight2, bins=bins,
                            window=window, unitless=unitless,
                            truncate=truncate, return_3d=return_3d)
@@ -428,7 +428,7 @@ def test_with_random(unitless=True):
     for specdata in zip(bin_left, bin_center,
                         bin_right, counts_histo, binavg,
                         pwrspec_input):
-        print ("%10.15g " * 6) % specdata
+        print(("%10.15g " * 6) % specdata)
 
 
 if __name__ == '__main__':

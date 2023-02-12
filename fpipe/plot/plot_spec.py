@@ -6,314 +6,163 @@ from scipy.signal import medfilt
 from scipy.signal import convolve2d
 
 from fpipe.plot import plot_map as pm
+from fpipe.point_source import source
+from fpipe.map import algebra as al
 
 from scipy.interpolate import interp1d, interp2d
 from scipy.interpolate import NearestNDInterpolator
 
 import h5py as h5
 
-def mJy2K(freq, eta=1., beam_off=0):
+def plot_source_from_map(map_list, nvss_path, nvss_range, threshold=100, 
+        output_path=None, beam_size=3./60., plot_hit=False, hitmap=None, 
+        ra_dec_path =None):
+    imap_info_list = []
+    for map_name in map_list:
+        with h5.File(map_name, 'r') as f:
+            imap = al.load_h5(f, 'clean_map')
+            imap = al.make_vect(imap, axis_names = imap.info['axes'])
 
-    data = np.loadtxt('/users/ycli/code/fpipe/fpipe/data/fwhm.dat')
-    f = data[4:, 0] * 1.e-3
-    d = data[4:, 1:]
-    fwhm = interp1d(f, np.mean(d, axis=1), fill_value="extrapolate")
+            #imap = f['dirty_map'][:]
+            pixs = f['map_pix'][:]
+            nside = f['nside'][()]
+        imap_info_list.append([imap, pixs, nside])
 
-    _lambda = 2.99e8 / (freq * 1.e9)
-    #_sigma = 1.02 *  _lambda / 300. / np.pi * 180. * 3600.
-    _sigma = fwhm(freq) * 60.
+    #for _s in source.get_pointsource_spec(nvss_path, nvss_range, threshold, mJy=True):
+    for _s in source.get_nvss_flux(nvss_path, nvss_range, threshold, mJy=True):
 
-    if beam_off != 0:
-        fact = np.exp(-0.5 * beam_off**2 / (_sigma/2./(2.*np.log(2.))**0.5 )**2 )
-    else:
-        fact = 1.
+        #ax1.plot(_s[0], _s[1], 'k--')
 
-    return eta * 1.36 * (_lambda*1.e2)**2. / _sigma**2. * fact
+        xx_min = 1.e30
+        xx_max = -1.e30
 
+        ymax = _s[1].max()*1.2
 
-def get_calibrator_spec(freq, cal_data_path='', cal_data=None, 
-        cal_param=None, ra=None, dec=None, beam_off=0):
+        #for map_name in map_list:
+        spec_list = []
+        for imap_info in imap_info_list:
 
-    if cal_param is None:
-        if cal_data is None:
-            cal_data = np.loadtxt(cal_data_path)
-        cal_spec_func = np.poly1d(np.polyfit(np.log10(cal_data[:,0]*1.e-9),
-                                             np.log10(cal_data[:,1]*1.e3),
-                                             deg=2,))
-                                             #w = 1./ cal_data[:,2]))
-                                             #w = 1./ np.log10(cal_data[:,2])))
-
-        cal_flux = 10. ** cal_spec_func(np.log10(freq)) # in mJy
-    else:
-        a, nu, idx = cal_param
-        cal_flux = (10 ** a) * ((freq / nu) ** (idx) )
-
-    #kBol = 1.38e6 # mJy m^2 /K
-    #eta   = 1. #0.6
-    #_lambda = 2.99e8 / (freq * 1.e9)
-    #_sigma = 1.02 * _lambda / 300. / 2. / (2. * np.log(2.))**0.5
-    ##_sigma[:] = _sigma.max()
-    ##_sigma = _lambda / 300. / 2. / (2. * np.log(2.))**0.5
-    #Aeff   = eta * _lambda ** 2. / (2. * np.pi * _sigma ** 2.)
-    #mJy2K  = Aeff / 2. / kBol
-
-    #mJy2K  = np.pi * 300. ** 2. / 8. / kBol  * 0.9
-    #print mJy2K
-
-    if ra is not None:
-        with h5.File('/scratch/users/ycli/fanalysis/etaA_map.h5', 'r') as f:
-            etaA = f['eta_A'][:]
-            _ra   = f['ra'][:]
-            _dec  = f['dec'][:]
-        _dec, _ra = np.meshgrid(_dec, _ra)
-        _dec = _dec.flatten()[:, None]
-        _ra  = _ra.flatten()[:, None]
-        etaA = etaA.flatten()
-        good = etaA != 0
-        etaA = etaA[good]
-        coord = np.concatenate([_ra[good, :], _dec[good, :]], axis=1)
-        
-        etaAf = NearestNDInterpolator(coord, etaA)
-
-        eta = etaAf(ra, dec)
-        print '[%f, %f] eta = %f'%(ra, dec, eta)
-    else:
-        eta   = 0.6 #0.9
-
-    #print 'Jy2K : %f'%(mJy2K[-1] * 1.e3)
-    cal_T = cal_flux * mJy2K(freq, eta, beam_off) # in K
-
-    return cal_T #, cal_T * factor
-
-def get_source_spec_group(source, map_path='', map_name_group=['',], 
-        smoothing=False, label_list=None, n_rebin=1, output=None,
-        offidx=(5, 6)):
-
-    if label_list is None:
-        label_list = ['%d'%ii for ii in range(len(map_name_group))]
-
-    fig = plt.figure(figsize=[8, 3])
-    ax  = fig.add_axes([0.1, 0.18, 0.85, 0.78])
-
-    for ii, map_list in enumerate(map_name_group):
-        label = [label_list[ii], ] + [None, ] * (len(map_list) - 1)
-        c_list = [pm._c_list[ii], ] * len(map_list)
-        freq = get_source_spec(source, map_path=map_path, map_name_list=map_list,
-                smoothing=smoothing, c_list = c_list, 
-                label_list=label, n_rebin=n_rebin, figaxes=[fig, ax],
-                output=output + '_%s'%label_list[ii], offidx=offidx)
-
-    s_path = source['path']
-    s_ra = source['ra']
-    s_dec = source['dec']
-    cal_T = get_calibrator_spec(freq, s_path, ra=s_ra, dec=s_dec)
-    ax.plot(freq, cal_T, 'k--', label=source['name'])
-
-    ax.set_ylim(ymin=-0.5, ymax=cal_T.max() * 1.5)
-
-    ax.set_xlabel('Frequency [GHz]')
-    ax.set_ylabel('T [K]')
-
-    ax.legend(loc=1)
-    if output is not None:
-        fig.savefig(output + '_spec.pdf', formate='pdf')
-
-def get_source_spec(source, map_path='', map_name_list=['',], smoothing=True,
-        c_list = None, label_list=None, n_rebin=64, figaxes=None, output=None,
-        offidx = (5, 6)):
-
-    if c_list is None:
-        c_list = ['r',]  * len(map_name_list)
-    if label_list is None:
-        label_list = [None, ] * len(map_name_list)
-
-    s_ra = source['ra']
-    s_dec = source['dec']
-
-    if figaxes is None:
-        fig = plt.figure(figsize=[8, 3])
-        ax  = fig.add_axes([0.1, 0.18, 0.85, 0.78])
-    else:
-        fig, ax = figaxes
-    freq_min = 1.e9
-    freq_max = -1.e9
-    df = 0.001
-
-    fig_map = plt.figure(figsize=[8, 3])
-    gs = gridspec.GridSpec(1, len(map_name_list), left=0.1, bottom=0.1, 
-            right=0.95, top=0.95, wspace=0.05, hspace=0.0)
-
-    for mm, map_name in enumerate( map_name_list ):
-        _c = c_list[mm]
-        for _map_name in map_name:
-            try:
-                imap, ra, dec, ra_edges, dec_edges, freq, mask\
-                    = pm.load_maps(map_path, _map_name, 'clean_map')
-                nmap, ra, dec, ra_edges, dec_edges, freq, mask\
-                    = pm.load_maps(map_path, _map_name, 'noise_diag')
-
-                ra_idx = np.digitize(s_ra, ra_edges) - 1
-                dec_idx = np.digitize(s_dec, dec_edges) - 1
-
-                #if ra_idx == -1 or ra_idx == imap.shape[1]:
-                #    print "source %s out side of map ra range"%source['name']
-                #    continue
-
-                #if dec_idx == -1 or dec_idx == imap.shape[2]:
-                #    print "source %s out side of map dec range"%source['name']
-                #    continue
-
-                if (not ( ra_idx == -1 or  ra_idx == imap.shape[1])) and \
-                   (not (dec_idx == -1 or dec_idx == imap.shape[2])):
-
-                    break
-
-            except IOError:
-                print 'Map not found %s'%map_name
+            _r = source.get_map_spec(imap_info, _s[3], _s[4], 
+                    beam_size=beam_size, mJy=True)
+            if _r is not None:
+                freq, spec, p_ra, p_dec, error = _r
+            else:
                 continue
+            spec = np.ma.masked_equal(spec, 0)
+            if not (np.all(spec.mask) or spec.shape[1] == 0):
+                spec_list.append([freq, spec])
 
-        if ra_idx == -1 or ra_idx == imap.shape[1]:
-            print "source %s out side of map ra range"%source['name']
+                ymax = max(ymax, np.ma.median(spec) * 1.5)
+
+                xx_min = min(xx_min, freq.min())
+                xx_max = max(xx_max, freq.max())
+
+        if len(spec_list) == 0:
             continue
 
-        if dec_idx == -1 or dec_idx == imap.shape[2]:
-            print "source %s out side of map dec range"%source['name']
-            continue
+        fig = plt.figure(figsize=(12, 4))
+        ax1 = fig.add_axes([0.06, 0.13, 0.52, 0.8])
+        #ax0 = fig.add_axes([0.70, 0.1, 0.20, 0.8])
+        cax = fig.add_axes([0.93, 0.13, 0.010, 0.8])
+        for spec in spec_list:
+            ax1.plot(spec[0], spec[1], 'r.', ms=3, mfc='none')
 
-        if smoothing:
-            map_mask = imap == 0.
-            _pix = np.abs(dec[1] - dec[0]) * 60.
-            pm.smooth_map(imap, _pix, freq)
-            imap[map_mask] = 0.
-
-        freq = freq / 1.e3
-        #print 'Freq. range %f - %f'%( freq.min(), freq.max())
-
-        if freq.min() < freq_min: freq_min = freq.min()
-        if freq.max() > freq_max: freq_max = freq.max()
-
-        #_sig = 3./(8. * np.log(2.))**0.5 / 1.
-        #imap = gf(imap, [1, _sig, _sig])
-        #imap = gf(imap, [2, 1, 1])
+        #if beam_size is not None:
+        #    beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
+        #    _w = np.exp(-0.5*(((p_ra - _s[3])*np.cos(np.radians(p_dec)))**2 \
+        #            + (p_dec - _s[4])**2)/beam_sig **2 )
+        #else:
+        #    _w = 1.
+        _w = 1.
+        #ax1.plot(_s[0], _s[1]*_w, 'k--')
+        #ax1.errorbar(_s[5][:, 0], _s[5][:, 1], _s[5][:, 2], fmt='go')
+        ax1.plot(_s[0], _s[1]*_w, 'go')
 
 
-        spec = imap[:, ra_idx, dec_idx]
-        nois = nmap[:, ra_idx, dec_idx]
+        #ax1.set_ylabel(r'$T$ K')
+        ax1.set_ylabel(r'Flux mJy')
+        ax1.set_xlabel('Frequency MHz')
+        ax1.set_xlim(xmin=xx_min, xmax=xx_max)
+        ax1.text(0.03, 0.1, '%s'%_s[2], transform=ax1.transAxes)
+        ax1.set_ylim(ymin=0, ymax=ymax)
 
-        ra_cent  = ra[ra_idx]
-        dec_cent = dec[dec_idx]
-        ra_off   = ra[ra_idx-offidx[0]]
-        dec_off  = dec[dec_idx-offidx[1]]
-        ra_delta = np.abs(ra[1] - ra[0])
-        dec_delta= np.abs(dec[1]- dec[0])
-        ra_st = max(ra_idx-10, 0)
-        ra_ed = min(ra_idx+11, imap.shape[1]-1)
-        dec_st = max(dec_idx - 10, 0)
-        dec_ed = min(dec_idx + 11, imap.shape[2]-1)
-        _imap = np.ma.masked_equal(imap[:, ra_st:ra_ed, dec_st:dec_ed], 0)
-        ax_map = fig_map.add_subplot(gs[0, mm])
-        ax_map.pcolormesh(ra_edges[ra_st:ra_ed+1], dec_edges[dec_st:dec_ed+1],
-                np.ma.mean(_imap, axis=0).T, cmap='Blues')
-        ax_map.plot(s_ra, s_dec, 'gx', mfc='none', mew=1.5)
-        ax_map.plot(ra_cent, dec_cent, 'r+', mfc='none', mew=1.5)
-        ax_map.plot(ra_off, dec_off,  'k+', mfc='none', mew=1.5)
-        ax_map.set_xlim(ra_cent - ra_delta*10, ra_cent + ra_delta*10)
-        ax_map.set_ylim(dec_cent - dec_delta*10, dec_cent + dec_delta*10)
-        ax_map.ticklabel_format(axis='x', style='plain', useOffset=0)
-        ax_map.set_aspect('equal')
-        ax_map.set_title('%3.2f-%3.2fGHz'%(freq.min(), freq.max()))
-        ax_map.set_xlabel('R.A.(J2000)')
-        if mm !=0:
-            ax_map.set_yticklabels([])
+        if plot_hit and (hitmap is not None):
+            map_name = hitmap
+            map_key  = 'hitmap'
+            vmin = 0
+            vmax = None
         else:
-            ax_map.set_ylabel('Dec(J2000)')
+            map_name = map_list[0]
+            map_key  = 'clean_map'
+            vmin = None
+            vmax = None
 
-        #nois[nois<0.1] = 0
-        spec[nois==0] = 0
+        ax0 = pm.plot_map_hp(map_name, map_key=map_key,
+                #map_key='noise_diag',
+                pix=0.2/60., indx=(slice(0, None), ), imap_shp = (100, 100),
+                field_center=[(_s[3], _s[4]),], figsize=(6, 3), 
+                vmin=vmin, vmax=vmax, sigma = None,
+                title='', proj='ZEA', cmap='Blues',
+                axes = (fig, [0.65, 0.13, 0.27, 0.8], cax),
+                verbose=False)[1][0]
 
-        spec = np.ma.masked_equal(spec, 0)
-        nois = np.ma.masked_equal(nois, 0)
+        _nvss_range = [_s[3] - 20 * 0.5/60., _s[3] + 20 * 0.5/60.,
+                       _s[4] - 20 * 0.5/60., _s[4] + 20 * 0.5/60.]
+        pm.plot_nvss(nvss_path, [_nvss_range,], (fig, ax0), 1)
 
-        #spec[~spec.mask] = medfilt(spec[~spec.mask], 25)
-        #ax.plot(freq, spec, '.', color='0.5', zorder=-1000)
+        ax0.plot(_s[3], _s[4], 'o', mec='r', mfc='none', ms=10, mew=1,
+                   transform=ax0.get_transform('icrs'))
+        #ax0.plot(_s[3]+8./60., _s[4], 'o', mec='g', mfc='none', ms=10, mew=1,
+        #           transform=ax0.get_transform('icrs'))
+        ax0.plot(p_ra, p_dec, '+', mec='y', mfc='none', ms=10, mew=1,
+                   transform=ax0.get_transform('icrs'))
+        #ax0.add_artist(plt.Circle((_s[3], _s[4]), beam_size/2., color='k', fill=False,
+        #        transform=ax0.get_transform('icrs')))
+        ax0.set_title('')
 
-        #n_rebin = 64
-        if n_rebin != 1:
-            freq_rebin = np.mean(freq.reshape(-1, n_rebin), axis=1)
-            spec_rebin = spec.reshape(-1, n_rebin)
-            nois_rebin = nois.reshape(-1, n_rebin)
+        beam_sig = beam_size * (2. * np.sqrt(2.*np.log(2.)))
+        if ra_dec_path is not None:
+            with h5.File(ra_dec_path, 'r') as f:
+                #for dset in f.keys():
+                _w_list = []
+                for i in range(7):
+                    dset = 'ra_dec_%02d'%i
+                    radec = f[dset][:]
+                    mask  = f['mask_%02d'%i][:]
+                    for i in range(19):
+                        #_ra  = np.ma.array(radec[:, 0, i], mask=mask[:, i])
+                        #_dec = np.ma.array(radec[:, 1, i], mask=mask[:, i])
+                        _ra  = radec[:, 0, i]
+                        _dec = radec[:, 1, i]
+                        _sel = (_ra  > _nvss_range[0]) \
+                             * (_ra  < _nvss_range[1]) \
+                             * (_dec > _nvss_range[2]) \
+                             * (_dec < _nvss_range[3])
+                        if np.any(_sel):
+                            #ax0.plot(_ra[_sel], _dec[_sel], 'w.',
+                            #    transform=ax0.get_transform('icrs'), zorder=1000)
+                            _w = np.exp(-0.5*(((_ra[_sel] - p_ra)\
+                                    *np.cos(np.radians(_dec[_sel])))**2 \
+                                    + (_dec[_sel] - p_dec)**2)/beam_sig **2 )
+                            _w = min(1, _w.max())
+                            _w_list.append(_w)
+                #print _w_list
+                ax1.plot(_s[0], _s[1]*max(_w_list), 'b--')
 
-            freq_rebin += df * mm/2
+            #ax0.plot()
 
-            spec_error = np.std(spec_rebin, axis=1)
+        if output_path is not None:
+            #fig.savefig(output_path + '%s.pdf'%(_s[2].replace(' ', '-')), 
+            #        formate='pdf')
+            if plot_hit and (hitmap is not None):
+                fig.savefig(output_path + '%s_hit.png'%(_s[2].replace(' ', '-')), 
+                        formate='png', dpi=300)
+            else:
+                fig.savefig(output_path + '%s.png'%(_s[2].replace(' ', '-')), 
+                        formate='png', dpi=300)
+        plt.show()
+        plt.clf()
 
-            nois_rebin[nois_rebin==0] = np.inf
-            nois_rebin = 1./nois_rebin
-
-            spec_rebin = np.sum(spec_rebin * nois_rebin, axis=1)
-
-            norm = np.sum(nois_rebin, axis=1)
-            norm[norm==0] = np.inf
-            spec_rebin /= norm
-        else:
-            freq_rebin = freq
-            spec_rebin = spec
-            spec_error = np.zeros_like(spec)
-
-        ax.errorbar(freq_rebin, spec_rebin, yerr=spec_error,
-                     fmt= 'o', color=_c, mfc='w', mec=_c, ms=3,
-                     label=label_list[mm])
-
-        # plot off
-        spec = imap[:, ra_idx - offidx[0], dec_idx - offidx[1]]
-        nois = nmap[:, ra_idx - offidx[0], dec_idx - offidx[1]]
-
-        #nois[nois<0.1] = 0
-        spec[nois==0] = 0
-
-        spec = np.ma.masked_equal(spec, 0)
-        nois = np.ma.masked_equal(nois, 0)
-
-        #spec[~spec.mask] = medfilt(spec[~spec.mask], 25)
-        #ax.plot(freq, spec, '.', color='0.5', zorder=-1000)
-
-        #n_rebin = 64
-        freq_rebin = np.mean(freq.reshape(-1, n_rebin), axis=1)
-        spec_rebin = spec.reshape(-1, n_rebin)
-        nois_rebin = nois.reshape(-1, n_rebin)
-
-        spec_error = np.std(spec_rebin, axis=1)
-
-        nois_rebin[nois_rebin==0] = np.inf
-        nois_rebin = 1./nois_rebin
-
-        spec_rebin = np.sum(spec_rebin * nois_rebin, axis=1)
-
-        norm = np.sum(nois_rebin, axis=1)
-        norm[norm==0] = np.inf
-        spec_rebin /= norm
-
-        ax.errorbar(freq_rebin, spec_rebin, yerr=spec_error,
-                     fmt='o', mec='0.5', mfc='none', ms=3)
-
-    if output is not None:
-        #fig_map.suptitle(label_list[0])
-        fig_map.savefig(output + '_submaps.pdf', formate='pdf')
-
-    if figaxes is None:
-        s_path = source['path']
-        freq = np.linspace(freq_min, freq_max, 1000)
-        cal_T = get_calibrator_spec(freq, s_path, ra=s_ra, dec=s_dec)
-        ax.plot(freq, cal_T, 'k--', label=source['name'])
-
-        ax.set_ylim(ymin=-0.5)
-
-        ax.set_xlabel('Frequency [GHz]')
-        ax.set_ylabel('T [K]')
-
-        ax.legend(loc=1)
-    else:
-        return np.linspace(freq_min, freq_max, 1000)
 
 def check_spec(source_list, output=None):
 
