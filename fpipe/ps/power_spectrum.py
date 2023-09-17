@@ -12,14 +12,16 @@ from tlpipe.utils.path_util import output_path
 from fpipe.map import mapbase
 from fpipe.map import algebra as al
 from fpipe.utils import physical_gridding as gridding
-from fpipe.utils import binning
+from fpipe.utils import binning, fftutil
+
+#physical_grid = gridding.physical_grid_lf
+physical_grid = gridding.physical_grid
+refinement = 1
+order = 0
 
 from fpipe.ps import pwrspec_estimator as pse, fgrm
 
 logger = logging.getLogger(__name__)
-
-physical_grid = gridding.physical_grid_lf
-#physical_grid = gridding.physical_grid
 
 
 class PowerSpectrum(OneAndOne, mapbase.MapBase):
@@ -27,12 +29,13 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
 
     params_init = {
             'prefix'   : 'MeerKAT3',
-            'kmin'     : 1.e-2,
-            'kmax'     : 1.,
-            'knum'     : 10,
+            #'kmin'     : 1.e-2,
+            #'kmax'     : 1.,
+            #'knum'     : 10,
+            'kbin'     : np.logspace(np.log10(0.045), np.log10(0.3), 12),
+            'logk'     : True,
             'kbin_x'   : None,
             'kbin_y'   : None,
-            'logk'     : True,
             'logk_2d'  : True,
             'unitless' : False, 
             'map_key'     : ['clean_map', 'clean_map'],
@@ -43,8 +46,8 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
             'sim' : False,
             'cube_input' : [False, False],
             'freq_mask' : [],
-            'prewhite' : True,
-            'refinement' : 1.,
+            'taper_freq_only' : True,
+            'percentile_cut' : None,
             }
 
     prefix = 'ps_'
@@ -86,6 +89,15 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
         self.create_dataset('binavg_2d', self.dset_shp + (self.knum_x, self.knum_y))
         self.create_dataset('counts_2d', self.dset_shp + (self.knum_x, self.knum_y))
 
+        with h5.File(self.input_files[0], 'r') as f:
+            map_tmp   = al.make_vect(al.load_h5(f, self.params['map_key'][0]))
+            if not self.params['cube_input'][0]:
+                c, c_info = physical_grid(map_tmp, refinement=refinement, order=order)
+            else:
+                c = map_tmp
+            c.info    = pse.make_k_axes(c)[0]
+        self.create_dataset('ps3d', self.dset_shp + c.shape, dset_info=c.info)
+
         self.df['kbin'] = self.kbin
         self.df['kbin_x'] = self.kbin_x
         self.df['kbin_y'] = self.kbin_y
@@ -98,22 +110,10 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
 
         logk = self.params['logk']
         logk_2d = self.params['logk_2d']
-        kmin = self.params['kmin']
-        kmax = self.params['kmax']
-        knum = self.params['knum']
-        if logk:
-            kbin = np.logspace(np.log10(kmin), np.log10(kmax), knum)
-            #dk = kbin[1] / kbin[0]
-            #kbin_edges = kbin / (dk ** 0.5)
-            #kbin_edges = np.append(kbin_edges, kbin_edges[-1]*dk)
-        else:
-            kbin = np.linspace(kmin, kmax, knum)
-            #dk = kbin[1] - kbin[0]
-            #kbin_edges = kbin - (dk * 0.5)
-            #kbin_edges = np.append(kbin_edges, kbin_edges[-1] + dk)
-        kbin_edges = binning.find_edges(kbin, logk=logk)
+        kbin_edges = self.params['kbin']
+        kbin = binning.find_centers(kbin_edges, logk=logk)
 
-        self.knum = knum
+        self.knum = kbin.shape[0]
         self.kbin = kbin
         self.kbin_edges = kbin_edges
 
@@ -122,8 +122,8 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
             self.kbin_x = kbin 
             self.kbin_x_edges = kbin_edges 
         else:
-            self.kbin_x = kbin_x
-            self.kbin_x_edges = binning.find_edges(kbin_x, logk=logk_2d)
+            self.kbin_x_edges = kbin_x
+            self.kbin_x = binning.find_centers(kbin_x, logk=logk_2d)
         self.knum_x = len(self.kbin_x)
 
         kbin_y = self.params['kbin_y']
@@ -131,11 +131,9 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
             self.kbin_y = kbin 
             self.kbin_y_edges = kbin_edges 
         else:
-            self.kbin_y = kbin_y
-            self.kbin_y_edges = binning.find_edges(kbin_y, logk=logk_2d)
+            self.kbin_y_edges = kbin_y
+            self.kbin_y = binning.find_centers(kbin_y, logk=logk_2d)
         self.knum_y = len(self.kbin_y)
-
-
 
     def init_task_list(self):
 
@@ -167,7 +165,7 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
 
     def iterpstasks(self, input):
 
-        refinement = self.params['refinement']
+        percentile_cut = self.params['percentile_cut']
 
         task_list = self.task_list
         for task_ind in mpiutil.mpirange(len(task_list)):
@@ -188,17 +186,24 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                 map_key = self.params['map_key'][i]
                 input_map = input[tind[0]][map_key][tind[1:] + (slice(None), )]
                 input_map_mask  = ~np.isfinite(input_map)
-                if (map_key is not 'delta') and (len(self.params['freq_mask']) != 0):
+                if map_key is not 'delta':
                     # ignore freqency mask for optical data
-                    logger.info('apply freq_mask')
-                    input_map_mask[self.params['freq_mask'], ...] = True
+                    if self.params['freq_mask'] is None:
+                        logger.info('No freq mask applied')
+                    else:
+                        try:
+                            freq_mask = input[tind[0]]['mask'][:].astype('bool')
+                            input_map_mask[freq_mask, ...] = True
+                            logger.info('apply mapmaker freq mask')
+                        except KeyError:
+                            logger.info('mapmaker freq mask dosen\' exist')
+                
+                        if (len(self.params['freq_mask']) != 0):
+                            logger.info('apply extra freq_mask')
+                            input_map_mask[self.params['freq_mask'], ...] = True
+
                 #input_map_mask += input_map == 0.
                 input_map[input_map_mask] = 0.
-                if self.params['prewhite']:
-                    input_map_mask = input_map == 0.
-                    _mean = np.ma.mean(np.ma.masked_equal(input_map, 0), axis=(1, 2))
-                    input_map -= _mean[:, None, None]
-                    input_map[input_map_mask] = 0.
                 input_map = al.make_vect(input_map, axis_names = ['freq', 'ra', 'dec'])
                 for key in input_map.info['axes']:
                     input_map.set_axis_info(key,
@@ -208,17 +213,28 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                 weight_key = self.params['weight_key'][i]
                 if weight_key is not None:
                     weight = input[tind[0]][weight_key][tind[1:] + (slice(None), )]
-                    weight[input_map_mask] = 0.
                     if weight_key == 'noise_diag':
-                        weight = fgrm.make_noise_factorizable(weight)
-                    if weight_key == 'separable':
+                        weight = fgrm.make_noise_factorizable(weight, 1.e-3)
+                    if weight_key == 'separable' or weight_key == 'selection':
                         logger.debug('apply FKP weight')
-                        weight = weight / (1. + weight * self.params['FKP'])
+                        try:
+                            nbar = input[tind[0]]['nbar'][tind[1:] + (slice(None), )]
+                        except KeyError:
+                            nbar = weight
+                        weight = weight / (1. + nbar * self.params['FKP'])
+                    elif percentile_cut is not None:
+                        logger.debug( 'apply %f percentile cut'%percentile_cut )
+                        _weight = np.ma.mean(weight, axis=0)
+                        _cut = _weight < np.percentile(_weight, percentile_cut)
+                        weight[:, _cut] = 0.
+
+                    weight[input_map_mask] = 0.
                     weight = al.make_vect(weight, axis_names = ['freq', 'ra', 'dec'])
                     weight.info = input_map.info
 
                 if not self.params['cube_input'][i]:
-                    c, c_info = physical_grid(input_map, refinement=refinement,order=0)
+                    c, c_info = physical_grid(input_map, 
+                            refinement=refinement, order=order)
                 else:
                     logger.debug('cube input')
                     c = input_map
@@ -228,16 +244,44 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
 
                 if weight_key is not None:
                     if not self.params['cube_input'][i]:
-                        cw, cw_info = physical_grid(weight, refinement=refinement,order=0)
+                        cw, cw_info = physical_grid(weight, 
+                                refinement=refinement, order=order)
                     else:
                         cw = weight
                         cw_info = None
                     #cw[c==0] = 0.
+
+                    #if weight_key == 'separable' or weight_key == 'selection':
+                    #    logger.debug('apply blackman for all dimension')
+                    #    window = fftutil.window_nd(cw.shape, name='blackman')
+                    #else:
+                    #    logger.debug('apply blackman along freq')
+                    #    window_func = getattr(np, 'blackman')
+                    #    window = window_func(cw.shape[0])[:, None, None]
+                    if self.params['taper_freq_only']:
+                        logger.debug('apply blackman along freq')
+                        window_func = getattr(np, 'blackman')
+                        window = window_func(cw.shape[0])[:, None, None]
+                    else:
+                        logger.debug('apply blackman for all dimension')
+                        window = fftutil.window_nd(cw.shape, name='blackman')
+
+                    cw = cw * window
                     cube_w.append(cw)
                     del weight
                 else:
                     cw = al.ones_like(c)
                     cw[c==0] = 0.
+
+                    if self.params['taper_freq_only']:
+                        logger.info('apply blackman along freq')
+                        window_func = getattr(np, 'blackman')
+                        window = window_func(cw.shape[0])[:, None, None]
+                    else:
+                        logger.debug('apply blackman for all dimension')
+                        window = fftutil.window_nd(cw.shape, name='blackman')
+
+                    cw = cw * window
                     cube_w.append(cw)
 
                 del c, c_info, cw, input_map
@@ -248,30 +292,12 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                     break
             yield tind_o, cube, cube_w
 
-    def load_transfer_func(self, transfer_func_path):
-
-        if transfer_func_path is not None:
-            with h5.File(transfer_func_path, 'r') as f:
-                tf = al.make_vec(al.load_h5(f, 'ps3d'))
-                tf[tf==0] = np.inf
-                tf = 1./tf
-        else:
-            tf = None
-
-        return tf
-
     def process(self, input):
-
-        tf = self.load_transfer_func(self.params['transfer_func'])
 
         for tind_o, cube, cube_w in self.iterpstasks(input):
 
-            ps2d, ps1d = pse.calculate_xspec(
+            ps3d, ps2d, ps1d = pse.calculate_xspec(
                     cube[0], cube[1], cube_w[0], cube_w[1],
-                    window= 'blackman', #None, 
-                    #window='hamming', #None, 
-                    #window='hanning',
-                    #window='kaiser',
                     bins=self.kbin_edges, bins_x = self.kbin_x_edges, 
                     bins_y = self.kbin_y_edges,
                     logbins = self.params['logk'],
@@ -279,13 +305,15 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                     unitless=self.params['unitless'],
                     nonorm = self.params['nonorm'],
                     feedback = self.feedback,
-                    transfer_func = tf, )
+                    return_3d=True)
 
             self.df['binavg_1d'][tind_o + (slice(None), )] = ps1d['binavg']
             self.df['counts_1d'][tind_o + (slice(None), )] = ps1d['counts_histo']
 
             self.df['binavg_2d'][tind_o + (slice(None), )] = ps2d['binavg']
             self.df['counts_2d'][tind_o + (slice(None), )] = ps2d['counts_histo']
+
+            self.df['ps3d'][tind_o + (slice(None), )] = ps3d
 
             del ps2d, ps1d, cube, cube_w
             gc.collect()
@@ -295,7 +323,6 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
 
 
     def finish(self):
-        #if mpiutil.rank0:
         logger.info('RANK %03d Finishing Ps.'%(mpiutil.rank))
 
         mpiutil.barrier()

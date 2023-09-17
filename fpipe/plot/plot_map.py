@@ -2,9 +2,15 @@
 
 from fpipe.map import algebra as al
 from fpipe.ps import fgrm
-from fpipe.plot import plot_waterfall
+from fpipe.point_source import source
+from fpipe.check import tsys
 
 import logging
+
+from astropy.io import fits
+from reproject import reproject_from_healpix, reproject_to_healpix
+from astropy.wcs import WCS
+from astropy.visualization.wcsaxes.frame import RectangularFrame, EllipticalFrame
 
 import h5py as h5
 import numpy as np
@@ -27,7 +33,291 @@ import healpy as hp
 logger = logging.getLogger(__name__)
 
 _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-                  "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
+           "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f"]
+
+def plot_map_hp(map_name, map_key='clean_map', indx = (), imap_shp = (600, 360), 
+        pix=3./60., field_center=[(165, 27.8), ], proj='ZEA', figsize=(14, 2),
+        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
+        nvss_path=None, verbose=True, cbar=True, colors='r', logscale=False,
+        freqdiff=False):
+
+    with h5.File(map_name, 'r') as f:
+        if verbose:
+            print(('Load maps from %s'%map_name))
+        #imap = f[map_key][indx]
+        imap = al.load_h5(f, map_key)
+        imap = al.make_vect(imap, axis_names = imap.info['axes'])
+        #imap = f['dirty_map'][:]
+        pixs = f['map_pix'][:]
+        nside = f['nside'][()]
+
+        print((list(f.keys())))
+
+    freq = imap.get_axis('freq')
+    freq = freq[indx[-1]]
+    imap = imap[indx]
+    imap = np.ma.masked_equal(imap, 0)
+
+    if freqdiff:
+        imap, mask = tsys.rms_ABAB_map(imap, imap.mask)
+        imap = np.ma.masked_equal(imap, 0)
+        freq = freq[:imap.shape[0] * 4]
+        freq.shape = (-1, 4)
+        freq = np.mean(freq, axis=1)
+
+        std  = np.ma.std(imap)
+        print('RMS [dfreq]: %10.8f K [%10.8f MHz]'%(std, (freq[1]-freq[0])/4.))
+
+    if isinstance( indx[-1], slice):
+        if map_key == 'noise_diag':
+            imap = np.ma.mean(imap, axis=0)
+            imap[imap==0] = np.inf
+            imap = 1./imap
+            imap = np.sqrt(imap)
+        else:
+            imap = np.ma.mean(imap, axis=0)
+        freq_label = 'Frequency %5.2f - %5.2f MHz'%(freq[0], freq[-1])
+    else:
+        freq_label = 'Frequency %5.2f MHz'%freq
+
+    return _plot_map_hp_multi(imap, pixs, nside, imap_shp = imap_shp, 
+        pix=pix, field_center_list=field_center, proj=proj, figsize=figsize,
+        sigma=sigma, vmin=vmin, vmax=vmax, cmap=cmap, axes=axes,
+        nvss_path=nvss_path, title = title + ' ' + freq_label, 
+        logscale=logscale)
+    #return _plot_map_hp_multi(imap, pixs, nside, imap_shp = imap_shp, 
+    #    pix=pix, field_center_list=field_center, proj=proj, figsize=figsize,
+    #    sigma=sigma, vmin=vmin, vmax=vmax, cmap=cmap, axes=axes,
+    #    nvss_path=nvss_path, title = title + ' ' + freq_label, 
+    #    cbar=cbar, colors=colors)
+
+def get_projection(proj, imap_shp, field_center, pix):
+
+    target_header = "NAXIS   = 2\n"\
+                  + "NAXIS1  = %d\n"%imap_shp[0]\
+                  + "NAXIS2  = %d\n"%imap_shp[1]\
+                  + "CTYPE1  = \'RA---%s\'\n"%proj\
+                  + "CRPIX1  = %d\n"%(imap_shp[0]/2)\
+                  + "CRVAL1  = %f\n"%field_center[0]\
+                  + "CDELT1  = -%f\n"%pix\
+                  + "CUNIT1  = \'deg\'\n"\
+                  + "CTYPE2  = \'DEC--%s\'\n"%proj\
+                  + "CRPIX2  = %d\n"%(imap_shp[1]/2)\
+                  + "CRVAL2  = %f\n"%field_center[1]\
+                  + "CDELT2  = %f\n"%pix\
+                  + "CUNIT2  = \'deg\'\n"\
+                  + "COORDSYS= \'icrs\'"
+
+    target_header = fits.Header.fromstring(target_header, sep = '\n')
+
+    return target_header, WCS(target_header)
+
+def _plot_map_hp_multi(imap, pixs, nside, imap_shp = (600, 360), axes=None, 
+        pix=3./60., field_center_list=[(165, 27.8), ], proj='ZEA', figsize=(14, 2),
+        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', nvss_path=None,
+        logscale=False):
+    
+    imap_full = np.zeros(hp.nside2npix(nside))
+    imap_full[pixs] = imap
+    imap_full = np.ma.masked_equal(imap_full, 0)
+
+    if sigma is not None:
+        mean = np.ma.mean(imap_full)
+        std  = np.ma.std(imap_full)
+        print('RMS [full freq]: %10.8f K '%(std))
+        vmin = mean - sigma * std
+        vmax = mean + sigma * std
+    #else:
+    #    if vmin is None: vmin = imap_full.min()
+    #    if vmax is None: vmax = imap_full.max()
+
+    if axes is None:
+        fig = plt.figure(figsize=figsize)
+        gs = gridspec.GridSpec(len(field_center_list), 1, right=0.90, 
+                figure=fig, wspace=0.0)
+        cax = fig.add_axes([0.91, 0.2, 0.1/float(figsize[0]), 0.6])
+        ax_list = []
+    else:
+        fig, ax_list, cax = axes
+    for ii, field_center in enumerate(field_center_list):
+
+        target_header, projection = get_projection(proj, imap_shp, field_center, pix)
+
+        array, footprint = reproject_from_healpix((imap_full, 'icrs'), target_header, 
+                nested=False, order='nearest-neighbor')
+
+        if axes is None:
+            ax = fig.add_subplot(gs[ii, 0], projection=projection, frame_class=RectangularFrame)
+            ax_list.append(ax)
+        else:
+            if isinstance( ax_list[0], float) :
+                ax = fig.add_axes(ax_list, projection=WCS(target_header),
+                        frame_class=RectangularFrame) 
+                ax_list = [ax,]
+            else:
+                ax = ax_list[ii]
+
+        array = np.ma.masked_invalid(array)
+        array[array==0] = np.ma.masked
+
+        if sigma is None:
+            if vmin is None: vmin = array.min()
+            if vmax is None: vmax = array.max()
+
+        if logscale: 
+            norm = mpl.colors.LogNorm(vmin=vmin, vmax=vmax)
+        else:
+            norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+        #im = ax.pcolormesh(array, cmap=cmap, vmin=vmin, vmax=vmax)
+        im = ax.pcolormesh(array, cmap=cmap, norm=norm)
+
+        ax.minorticks_on()
+        ax.set_aspect('equal')
+        #ax.coords[0].set_ticks(spacing=300 * u.arcmin,)
+        ax.coords[0].set_major_formatter('hh:mm')
+        ax.coords[0].set_separator((r'$^{\rm h}$', r'$^{\rm m}$', r'$^{\rm s}$'))
+        ax.coords[1].set_major_formatter('dd:mm')
+        ax.coords[1].set_axislabel('Dec. (J2000)', minpad=0.5)
+        ax.coords.grid(color='0.5', linestyle='--', lw=0.5)
+
+        if ii == 0:
+            ax.set_title( title)
+
+        if nvss_path is not None:
+            nvss_range = [
+                    field_center[0] - imap_shp[0] * 0.5 * pix * 1.1, 
+                    field_center[0] + imap_shp[0] * 0.5 * pix * 1.1, 
+                    field_center[1] - imap_shp[1] * 0.5 * pix, 
+                    field_center[1] + imap_shp[1] * 0.5 * pix, 
+                    ]
+            plot_nvss(nvss_path, [nvss_range,], (fig, ax), ms=3, mew=0.2)
+
+    ax.coords[0].set_axislabel('R.A. (J2000)', minpad=0.5)
+
+    ticks_label = []
+    if not logscale:
+        ticks = list(np.linspace(vmin, vmax, 5))
+        for x in ticks:
+            ticks_label.append(r"$%5.2f$"%x)
+        fig.colorbar(im, cax=cax, ticks=ticks)
+        cax.set_yticklabels(ticks_label, rotation=90, va='center')
+        cax.minorticks_off()
+    else:
+        fig.colorbar(im, cax=cax)
+        cax.minorticks_off()
+        ticks_label = cax.get_yticklabels()
+        cax.set_yticklabels(ticks_label, rotation=90, va='center')
+    c_label = r'$T\,$ K'
+    cax.set_ylabel(c_label)
+
+
+    return fig, ax_list, cax
+
+
+def _plot_map_hp(imap, pixs, nside, imap_shp = (600, 360), 
+        pix=3./60., field_center=(165, 27.8), proj='ZEA', figsize=(14, 2),
+        sigma=2., vmin=None, vmax=None, title='', cmap='bwr', axes=None,
+        nvss_path=None, cbar=True, colors='r', fill=False):
+    
+    imap_full = np.zeros(hp.nside2npix(nside))
+    imap_full[pixs] = imap
+    imap_full = np.ma.masked_equal(imap_full, 0)
+
+    target_header, projection = get_projection(proj, imap_shp, field_center, pix)
+
+    array, footprint = reproject_from_healpix((imap_full, 'icrs'), target_header, 
+            nested=False, order='nearest-neighbor')
+
+    if axes is None:
+        fig = plt.figure(figsize=figsize)
+        if cbar:
+            ax = fig.add_axes([0.06, 0.1, 0.88, 0.8], projection=projection,
+                              frame_class=RectangularFrame)
+            cax = fig.add_axes([0.95, 0.1, 0.01, 0.8])
+        else:
+            ax = fig.add_axes([0.06, 0.1, 0.92, 0.88], projection=projection,
+                              frame_class=RectangularFrame)
+    else:
+        if len(axes) == 3:
+            fig, rect, cax = axes
+            ax = fig.add_axes(rect, projection=WCS(target_header),
+                              frame_class=RectangularFrame)
+        else:
+            fig, ax = axes
+    #array = np.ma.masked_invalid(footprint)
+    array = np.ma.masked_invalid(array)
+    array[array==0] = np.ma.masked
+
+
+    if sigma is not None:
+        mean = np.ma.mean(array)
+        std  = np.ma.std(array)
+        vmin = mean - sigma * std
+        vmax = mean + sigma * std
+    else:
+        if vmin is None: vmin = array.min()
+        if vmax is None: vmax = array.max()
+
+    if cbar:
+        im = ax.pcolormesh(array, cmap=cmap, vmin=vmin, vmax=vmax)
+    else:
+        array = array.data
+        ax.contour(array, levels=[0.1, 1,], colors=colors, 
+                linewidths=1.0)
+        if fill:
+            ax.contourf(array, levels=[0.1, 1,], colors=colors, linewidths=2.5, 
+                    alpha=0.3)
+
+    ax.minorticks_on()
+    ax.set_aspect('equal')
+    #ax.coords[0].set_ticks(spacing=300 * u.arcmin,)
+    ax.coords[0].set_major_formatter('hh:mm')
+    ax.coords[0].set_separator((r'$^{\rm h}$', r'$^{\rm m}$', r'$^{\rm s}$'))
+    ax.coords[0].set_axislabel('R.A. (J2000)', minpad=0.5)
+    ax.coords[1].set_major_formatter('dd:mm')
+    ax.coords[1].set_axislabel('Dec. (J2000)', minpad=0.5)
+    ax.coords.grid(color='black', linestyle='--', lw=0.5)
+
+    ax.set_title( title)
+
+    ticks = list(np.linspace(vmin, vmax, 5))
+    ticks_label = []
+    for x in ticks:
+        ticks_label.append(r"$%5.2f$"%x)
+    if cbar:
+        fig.colorbar(im, cax=cax, ticks=ticks)
+        cax.set_yticklabels(ticks_label, rotation=90, va='center')
+        cax.minorticks_off()
+        c_label = r'$T\,$ K'
+        cax.set_ylabel(c_label)
+
+    if nvss_path is not None:
+        nvss_range = [
+                field_center[0] - imap_shp[0] * 0.5 * pix, 
+                field_center[0] + imap_shp[0] * 0.5 * pix, 
+                field_center[1] - imap_shp[1] * 0.5 * pix, 
+                field_center[1] + imap_shp[1] * 0.5 * pix, 
+                ]
+        plot_nvss(nvss_path, [nvss_range,], (fig, ax), ms=10, mew=2.0)
+
+    if cbar:
+        return fig, ax, cax
+    else:
+        return fig, ax
+
+def plot_nvss(nvss_path, nvss_range, axes, threshold=300., ms=10, mew=1,):
+
+    fig, ax = axes
+
+    nvss_cat = source.get_nvss_radec(nvss_path, nvss_range)
+    nvss_sel = nvss_cat['FLUX_20_CM'] > threshold
+    nvss_ra  = nvss_cat['RA'][nvss_sel]
+    nvss_dec = nvss_cat['DEC'][nvss_sel]
+    ax.plot(nvss_ra, nvss_dec, 'o', mec='k', mfc='none', ms=ms, mew=mew,
+            transform=ax.get_transform('icrs'))
+
+
 def load_maps_npy(dm_path, dm_file):
 
     #with h5.File(dm_path+dm_file, 'r') as f:
@@ -47,7 +337,7 @@ def load_maps_npy(dm_path, dm_file):
 def load_maps(dm_path, dm_file, name='clean_map'):
 
     with h5.File(dm_path+dm_file, 'r') as f:
-        print f.keys()
+        print((list(f.keys())))
         imap = al.load_h5(f, name)
         imap = al.make_vect(imap, axis_names = imap.info['axes'])
         #imap = al.make_vect(al.load_h5(f, name))
@@ -68,6 +358,24 @@ def load_maps(dm_path, dm_file, name='clean_map'):
 
     return imap, ra, dec, ra_edges, dec_edges, freq, mask
 
+def load_maps_hp(dm_path, dm_file, name='clean_map'):
+
+    with h5.File(dm_path + dm_file, 'r') as f:
+        imap = al.load_h5(f, 'clean_map')
+        #imap = al.make_vect(imap, axis_names = imap.info['axes'])
+        imap = al.make_vect(imap)
+        nside = f['nside'][()]
+        pixs = f['map_pix'][:]
+        freq = imap.get_axis('freq')
+
+        try:
+            mask = f['mask'][:]
+        except KeyError:
+            #print('No mask')
+            mask = None
+
+    return imap, pixs, freq, mask
+
 def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             xlim=None, ylim=None, logscale=False,
             vmin=None, vmax=None, sigma=2., inv=False, mK=True,
@@ -83,7 +391,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             imap = al.load_h5(f, map_type)
             if print_info:
                 logger.info( ('%s '* len(keys))%keys )
-                print imap.info
+                print((imap.info))
             try:
                 mask = f['mask'][:].astype('bool')
             except KeyError:
@@ -111,8 +419,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
         imap[mask] = np.ma.masked
 
     imap = imap[indx]
-    freq = freq[indx[-1]]
-    if isinstance( indx[-1], slice):
+    freq = freq[indx[0]]
+    if isinstance( indx[0], slice):
         freq = (freq[0], freq[-1])
         #print imap.shape
         imap = np.ma.mean(imap, axis=0)
@@ -170,6 +478,8 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             #if vmax is None: vmax = np.ma.median(imap)
  
         norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+
+    print((vmin, vmax))
     
     
     fig = plt.figure(figsize=figsize)
@@ -202,7 +512,7 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
     nvss_range = [ [ra_edges.min(), ra_edges.max(), 
                     dec_edges.min(), dec_edges.max()],]
     if nvss_path is not None:
-        nvss_cat = plot_waterfall.get_nvss_radec(nvss_path, nvss_range)
+        nvss_cat = source.get_nvss_radec(nvss_path, nvss_range)
         nvss_sel = nvss_cat['FLUX_20_CM'] > 10.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
@@ -218,10 +528,10 @@ def show_map(map_path, map_type, indx = (), figsize=(10, 4),
             dec_idx = np.digitize(_dec[i], dec_edges) - 1
             ax.plot(ra[ra_idx], dec[dec_idx], 'wx', ms=10, mew=2)
             _c = SkyCoord(_ra[i] * u.deg, _dec[i] * u.deg)
-            print '%s [RA,Dec]:'%_id[i] \
+            print(('%s [RA,Dec]:'%_id[i] \
                     + '[%7.4fd'%_c.ra.deg \
                     + '(%dh%dm%6.4f) '%_c.ra.hms\
-                    + ': %7.4fd], FLUX %7.4f Jy'%(_c.dec.deg, _flx[i]/1000.)
+                    + ': %7.4fd], FLUX %7.4f Jy'%(_c.dec.deg, _flx[i]/1000.)))
     if not logscale:
         ticks = list(np.linspace(vmin, vmax, 5))
         ticks_label = []
@@ -254,7 +564,7 @@ def plot_map(data, indx = (), figsize=(10, 4),
     freq = data[5][indx[-1]]
     if isinstance( indx[-1], slice):
         freq = (freq[0], freq[-1])
-        print imap.shape
+        print((imap.shape))
         imap = np.ma.mean(imap, axis=0)
     else:
         freq = (freq, )
@@ -341,7 +651,7 @@ def plot_map(data, indx = (), figsize=(10, 4),
 
     nvss_range = [ [ra_edges.min(), ra_edges.max(), dec_edges.min(), dec_edges.max()],]
     if nvss_path is not None:
-        nvss_cat = plot_waterfall.get_nvss_radec(nvss_path, nvss_range)
+        nvss_cat = source.get_nvss_radec(nvss_path, nvss_range)
         nvss_sel = nvss_cat['FLUX_20_CM'] > 500.
         nvss_ra  = nvss_cat['RA'][nvss_sel]
         nvss_dec = nvss_cat['DEC'][nvss_sel]
@@ -353,8 +663,8 @@ def plot_map(data, indx = (), figsize=(10, 4),
         _dec = nvss_cat['DEC'][_sel]
         _flx =  nvss_cat['FLUX_20_CM'][_sel]
         for i in range(np.sum(_sel)):
-            print '%s [RA,Dec]: [%7.4f : %7.4f], FLUX %7.4f Jy'%(
-                    _id[i], _ra[i], _dec[i], _flx[i]/1000.)
+            print(('%s [RA,Dec]: [%7.4f : %7.4f], FLUX %7.4f Jy'%(
+                    _id[i], _ra[i], _dec[i], _flx[i]/1000.)))
 
     if not logscale:
         ticks = list(np.linspace(vmin, vmax, 5))
@@ -394,7 +704,7 @@ def load_ps1d_opt(ps_path, ps_file):
 
     with h5.File(ps_path + ps_file , 'r') as f:
 
-        print f.keys()
+        print((list(f.keys())))
         ps1d_all = f['binavg_1d'][:]
         ps1d_kbin = f['kbin'][:]
     
@@ -457,7 +767,7 @@ def plot_1dps_old(ps_list, logk=True, figsize=(8,6), vmin=None, vmax=None):
 
 
     ns = ( 25. / np.sqrt(1. * 13.e6  * 2 * 16.) )**2.
-    print ns ** 0.5
+    print((ns ** 0.5))
 
     #ns_kh = np.logspace(-3, 2, 100)
     ns_kh = psin[:,0]
@@ -477,7 +787,7 @@ def plot_1dps_old(ps_list, logk=True, figsize=(8,6), vmin=None, vmax=None):
 def plot_1dps(ps_path, ps_name_list, figsize=(8,6), title='',
               vmin=None, vmax=None, logk=True, ns=25., cube_size=1.):
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ps_n = len(ps_keys)
     shift = np.arange(ps_n) - (float(ps_n) - 1.)/ 2.
     shift *= 0.5
@@ -526,7 +836,7 @@ def plot_1dps(ps_path, ps_name_list, figsize=(8,6), title='',
 def plot_2dps(ps_path, ps_name_list, figsize=(16, 4),title='',
              vmax=None, vmin=None, logk=True):
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     cols = len(ps_keys)
     fig = plt.figure(figsize=figsize)
     fig.suptitle(title)
@@ -572,3 +882,4 @@ def plot_2dps(ps_path, ps_name_list, figsize=(16, 4),title='',
     fig.colorbar(im, ax=ax, cax=cax)
     cax.minorticks_off()
     cax.set_ylabel(r'$P(k)$')
+

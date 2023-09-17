@@ -4,6 +4,8 @@ import h5py
 from astropy import units as u
 from astropy.time import Time
 
+import gc
+
 class FASTfits_Spec(object):
     '''
     Load the raw FAST fits file
@@ -103,9 +105,11 @@ class FASTfits_Spec(object):
         self.history += msg
         
         cal_on = np.zeros(self.data.shape[0]).astype('bool')
-        cal_on = cal_on.reshape(-1, p)
-        cal_on[:, d:l] = True
-        cal_on = cal_on.flatten()
+        #cal_on = cal_on.reshape(-1, p)
+        #cal_on[:, d:l] = True
+        #cal_on = cal_on.flatten()
+        for i in range(l):
+            cal_on[slice(d+i, None, p)] = True
         self.cal_on = cal_on
         self.cal_off = np.roll(cal_on, 1)
 
@@ -123,8 +127,8 @@ class FASTfits_Spec(object):
 
         data_shp = (time_n, freq_n, n, pol_n)
 
-        data = self.data[...,:freq_n*n].reshape(data_shp)
-        mask = self.mask[...,:freq_n*n].reshape(data_shp)
+        data = self.data[:,:freq_n*n,:].reshape(data_shp)
+        mask = self.mask[:,:freq_n*n,:].reshape(data_shp)
         data[mask] = 0.
         mask = (~mask).astype('int')
         
@@ -140,6 +144,41 @@ class FASTfits_Spec(object):
         self.data = data
         self.mask = mask
         self.freq = freq
+
+        self.history += msg
+
+    def rebin_time(self, n=10):
+
+        time_n, freq_n, pol_n = self.data.shape
+
+        time = self.time
+        time_reso = time[1] - time[0]
+        time_n = time_n / n
+        time = time[:time_n*n].reshape(time_n, n)
+        msg  = "Degrade time interval from %16.12f s to %16.12f s\n"%(
+                time_reso, time_reso * n)
+        msg += "By averaging avery %d time stampes\n"%n
+        msg += "Abandon last %d time stamps\n"%(self.data.shape[0] - time_n*n)
+
+        data_shp = (time_n, n, freq_n, pol_n)
+
+        data = self.data[:time_n*n, ...].reshape(data_shp)
+        mask = self.mask[:time_n*n, ...].reshape(data_shp)
+        data[mask] = 0.
+        mask = (~mask).astype('int')
+        
+        time = np.mean(time, axis=1)
+        msg += "time(0) = %16.12f s, dtime = %16.12f s\n"%(
+                time[0], (time[1] - time[0] ))
+        data = np.sum(data, axis=1)
+        norm = np.sum(mask, axis=1) * 1.
+        mask = norm < n * 0.8
+        norm[mask] = np.inf
+        data = data / norm
+        
+        self.data = data
+        self.mask = mask
+        self.time = time
 
         self.history += msg
 
@@ -169,22 +208,34 @@ class FASTh5_Spec(object):
         self.time = data['time']
         self.date_obs = self.time[0]
         self.data = data['vis'].data
-        self.mask = data['vis'].mask
+        if not hasattr(data['vis'].mask, '__iter__'):
+            self.mask = np.zeros(self.data.shape, dtype='bool')
+        else:
+            self.mask = data['vis'].mask
+        self.ra   = data['ra']
+        self.dec  = data['dec']
+        self.ants = data['ants']
+        self.ns_on= data['ns_on']
+
+        del data
+        gc.collect()
 
 
     def load_data(self, data_file, data=None, freq_sel = [None, None]):
 
         with h5py.File(data_file, 'r') as fh: 
-            freqstart = fh.attrs['freqstart']
-            freqstep  = fh.attrs['freqstep']
-            freqn     = fh.attrs['nfreq']
-            freq = np.arange(freqn) * freqstep + freqstart
+            #freqstart = fh.attrs['freqstart']
+            #freqstep  = fh.attrs['freqstep']
+            #freqn     = fh.attrs['nfreq']
+            #freq = np.arange(freqn) * freqstep + freqstart
+            freq = fh['freq'][:]
             
             ants = fh['blorder'][:]
             
             freq = freq[slice(*freq_sel)]
         
-            vis = np.abs(fh['vis'][:, slice(*freq_sel), ...])
+            #vis = np.abs(fh['vis'][:, slice(*freq_sel), ...])
+            vis = fh['vis'][:, slice(*freq_sel), ...]
         
             #timestart = fh.attrs['sec1970']
             #timestep  = fh.attrs['inttime']
@@ -194,9 +245,12 @@ class FASTh5_Spec(object):
             
             ra = fh['ra'][:]
             dec= fh['dec'][:]
+
+            ns_on = fh['ns_on'][:].astype('bool')
+            mask = fh['vis_mask'][:, slice(*freq_sel), ...].astype('bool')
         
-        vis = np.ma.array(vis)
-        vis.mask = np.zeros(vis.shape).astype('bool')
+        vis = np.ma.array(vis, mask=mask)
+        #vis.mask = np.zeros(vis.shape).astype('bool')
 
         if data is None:
             data = {}
@@ -206,11 +260,16 @@ class FASTh5_Spec(object):
             data['ants'] = ants
             data['ra'] = ra
             data['dec'] = dec
+            data['ns_on'] = ns_on
         else:
-            data['vis']  = np.ma.concatenate([data['vis'], vis],   axis=0)
-            data['time'] = np.ma.concatenate([data['time'], time], axis=0)
-            data['ra']   = np.ma.concatenate([data['ra'], ra],     axis=0)
-            data['dec']  = np.ma.concatenate([data['dec'], ra],    axis=0)
+            data['vis']  = np.ma.concatenate([data['vis'], vis],    axis=0)
+            data['time'] = np.ma.concatenate([data['time'], time],  axis=0)
+            data['ra']   = np.ma.concatenate([data['ra'], ra],      axis=0)
+            data['dec']  = np.ma.concatenate([data['dec'], dec],    axis=0)
+            data['ns_on']= np.ma.concatenate([data['ns_on'], ns_on],axis=0)
+
+        del vis, mask, ra, dec, ns_on, freq, ants
+        gc.collect()
 
         return data
 

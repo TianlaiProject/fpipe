@@ -83,10 +83,10 @@ class FAST_Timestream(timestream.Timestream):
 
             pol = pol[:].tolist()
             p = self.pol_dict
-            if pol[0] == 'hh':
+            if pol[0] == b'hh':
                 # for some reason, pol attr recorded in MeerKAT data are
                 # ['hh', 'vv', 'hv', 'vh'], change it back to [0, 1, 2, 3]
-                pol = [p[_p] for _p in pol]
+                pol = [p[_p.decode()] for _p in pol]
 
             # create a new MPIArray to hold the new data
             shp = self.main_data.shape
@@ -108,7 +108,7 @@ class FAST_Timestream(timestream.Timestream):
                     distributed_axis=self.main_data_dist_axis)
             memh5.copyattrs(attr_dict, self.main_data.attrs)
 
-            if self.main_data_name + '_mask' in self.keys():
+            if self.main_data_name + '_mask' in list(self.keys()):
                 mk = mpiarray.MPIArray(shp, axis=self.main_data_dist_axis, 
                         comm=self.comm, dtype=self[self.main_data_name + '_mask'].dtype)
                 mk.local_array[:, :, 0] = \

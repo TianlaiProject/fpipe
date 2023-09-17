@@ -5,7 +5,7 @@ import matplotlib.ticker
 import matplotlib.gridspec as gridspec
 from matplotlib.ticker import MaxNLocator,ScalarFormatter
 
-import data_format
+from . import data_format
 import h5py
 from fpipe.utils import coord
 
@@ -30,12 +30,11 @@ _Lon = (106. + 51./60. + 24.0/3600.) * u.deg
 _Lat = (25. + 39./60. + 10.6/3600.) * u.deg
 _Location = EarthLocation.from_geodetic(_Lon, _Lat)
 
-
-
-def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=0,
-                  beam_list = [0, ], block_list = [0, 1],
-                  fmin=None, fmax=None, degrade_freq_resol=None,
-                  noise_cal = [8, 1, 0]):
+def convert_to_tl(data_path, data_file, output_path, alt_f=None, az_f=None, 
+        drift_dec=None, drift_mjd0=None, feed_rotation=0, feed_rotation_f=None,
+        beam_list = [0, ], block_list = [0, 1], fmin=None, fmax=None, 
+        degrade_freq_resol=None, degrade_time_resol=None,
+        noise_cal = [8, 1, 0]):
     
     data_file_list = [[data_path + data_file%(_beam, _block)
                        for _block in block_list] for _beam in beam_list]
@@ -49,12 +48,23 @@ def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=
         beam_n = len(beam_list)
         for ii in range(beam_n):
         
-            print fmin, fmax
-            fdata = data_format.FASTfits_Spec(data_file_list[ii], fmin, fmax)
-            fdata.flag_cal(*noise_cal)
+            print((fmin, fmax))
             if degrade_freq_resol is not None:
+                fdata = data_format.FASTfits_Spec(data_file_list[ii], None, None)
+                if degrade_time_resol is not None:
+                    fdata.rebin_time(degrade_time_resol)
+                fdata.flag_cal(*noise_cal)
                 fdata.rebin_freq(degrade_freq_resol)
-            print fdata.history
+                f_st, f_ed = fdata.freq_truncate(fdata.freq, fmin, fmax)
+                fdata.freq = fdata.freq[f_st:f_ed]
+                fdata.data = fdata.data[:, f_st:f_ed,...]
+                fdata.mask = fdata.mask[:, f_st:f_ed,...]
+            else:
+                fdata = data_format.FASTfits_Spec(data_file_list[ii], fmin, fmax)
+                if degrade_time_resol is not None:
+                    fdata.rebin_time(degrade_time_resol)
+                fdata.flag_cal(*noise_cal)
+            print((fdata.history))
             if ii == 0: history += fdata.history
         
             if data_shp is None:
@@ -79,18 +89,31 @@ def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=
                 df.attrs['nfreq'] = nfreq
                 df.attrs['freqstart'] = fdata.freq[0]
                 df.attrs['freqstep'] = fdata.freq[1] - fdata.freq[0]
-                print 'Frequency range [%8.4f, %8.4f] MHz'%(
-                        fdata.freq[0], fdata.freq[-1])
-                print 'Frequency %8.4f MHz x %d'%(
-                        fdata.freq[1] - fdata.freq[0], nfreq)
+                print(('Frequency range [%8.4f, %8.4f] MHz'%(
+                        fdata.freq[0], fdata.freq[-1])))
+                print(('Frequency %8.4f MHz x %d'%(
+                        fdata.freq[1] - fdata.freq[0], nfreq)))
 
                 ## get ra dec according to meridian scan
                 #ra, dec = get_pointing_meridian_scan(fdata.time, dec0, 
                 #        time_format='unix', feed_rotation=feed_rotation)
                 #ra, dec = get_pointing_meridian_scan(fdata.time, alt, az,
                 #        time_format='unix', feed_rotation=feed_rotation)
-                alt0 = alt_f(fdata.time)
-                az0  = az_f(fdata.time)
+                if alt_f is not None:
+                    alt0 = alt_f(fdata.time)
+                    az0  = az_f(fdata.time)
+                elif drift_dec is not None:
+                    t, az0, alt0 = coord.drift_azalt(fdata.time, drift_dec, 
+                            drift_mjd0=drift_mjd0)
+                    az0  = az0.value
+                    alt0 = alt0.value
+                else:
+                    msg = 'alt_f/az_f or drift_dec is needed'
+                    raise IOError(msg)
+
+                if feed_rotation_f is not None:
+                    feed_rotation = feed_rotation_f(fdata.time)
+
                 az, alt, ra, dec = coord.get_pointing_any_scan(fdata.time, 
                         alt0, az0, time_format='unix', feed_rotation=feed_rotation)
 
@@ -114,7 +137,7 @@ def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=
             del fdata
             gc.collect()
             
-            print
+            print()
         
         # get ra dec according to meridian scan
         beam_indx = [x-1 for x in beam_list]
@@ -124,7 +147,7 @@ def convert_to_tl(data_path, data_file, output_path, alt_f, az_f, feed_rotation=
         df['ra'] = ra
         df['ra'].attrs['dimname']  = 'Time, Baseline'
 
-        df['dec'] = dec.astype('float32')
+        df['dec'] = dec #.astype('float32')
         df['dec'].attrs['dimname'] = 'Time, Baseline'
 
         df.attrs['history'] = history
@@ -165,7 +188,7 @@ def fill_info(df):
     df.attrs['timezone'] = 'UTC+08'  #
     df.attrs['epoch'] = 2000.0  # year
 
-    df.attrs['telescope'] = 'FAST' #
+    df.attrs['telescope'] = b'FAST' #
     df.attrs['dishdiam'] = 300.
     df.attrs['cylen'] = -1 # For dish: -1
     df.attrs['cywid'] = -1 # For dish: -1

@@ -70,6 +70,10 @@ def subtract_frequency_modes(imap, modes, weight, freq, defer=False):
     r"""Subtract frequency modes from the map.
     """
 
+    if weight is None:
+        weight = np.ones_like(imap)
+        weight[imap==0] = 0.
+
     # First map.
     omap = sp.empty((len(modes), ) + imap.shape[1:])
 
