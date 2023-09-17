@@ -459,7 +459,7 @@ def plot_1dps_noise_from_raw_ps_output(ps_path, ps_name_list, tr_path=None,
         ncol=None, ps_ref='ps_sub00modes', conv_beam=True, fitting_k_max=0.2 ):
 
     
-    ps_keys = ps_name_list.keys()
+    ps_keys = list(ps_name_list.keys())
     ps_n = len(ps_keys)
     shift = (np.arange(ps_n) - (float(ps_n) - 1.)/ 2.) * shift
 

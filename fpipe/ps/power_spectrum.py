@@ -23,7 +23,6 @@ from fpipe.ps import pwrspec_estimator as pse, fgrm
 
 logger = logging.getLogger(__name__)
 
-
 class PowerSpectrum(OneAndOne, mapbase.MapBase):
     """Module to estimate the power spectrum."""
 
@@ -210,6 +209,15 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                                             self.map_info[key+'_centre'],
                                             self.map_info[key+'_delta'])
 
+                if not self.params['cube_input'][i]:
+                    c, c_info = physical_grid(input_map, refinement=refinement,order=0)
+                else:
+                    logger.debug('cube input')
+                    c = input_map
+                    c_info = None
+
+                cube.append(c)
+
                 weight_key = self.params['weight_key'][i]
                 if weight_key is not None:
                     weight = input[tind[0]][weight_key][tind[1:] + (slice(None), )]
@@ -236,11 +244,12 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                     c, c_info = physical_grid(input_map, 
                             refinement=refinement, order=order)
                 else:
-                    logger.debug('cube input')
-                    c = input_map
-                    c_info = None
+                    weight = np.ones_like(input_map)
 
-                cube.append(c)
+                #wf = fftutil.window_nd(input_map.shape, 'blackman')
+                #weight *= wf
+                weight = al.make_vect(weight, axis_names = ['freq', 'ra', 'dec'])
+                weight.info = input_map.info
 
                 if weight_key is not None:
                     if not self.params['cube_input'][i]:
@@ -284,7 +293,7 @@ class PowerSpectrum(OneAndOne, mapbase.MapBase):
                     cw = cw * window
                     cube_w.append(cw)
 
-                del c, c_info, cw, input_map
+                del weight, c, c_info, cw, input_map
 
                 if tind_l == tind_r:
                     cube.append(cube[0])
