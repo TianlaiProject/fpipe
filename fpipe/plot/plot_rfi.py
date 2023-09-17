@@ -129,7 +129,7 @@ def plot_rfi_hist(hist, bins, axes=None, label_list = None, output=None, ls='-',
     return legend_list, norm_list
         
         
-def plot_rfi_hist_multi(hist_file, output=None):
+def plot_rfi_hist_multi(hist_file, output=None, fbins=None):
     
     ls = ['-', '--']
     
@@ -139,7 +139,8 @@ def plot_rfi_hist_multi(hist_file, output=None):
     with h5.File(hist_file, 'r') as f:
         hist = f['hist'][:]
         hist_nomask = f['hist_nomask'][:]
-        fbins = f['fbin'][:]
+        if fbins is None:
+            fbins = f['fbin'][:]
         bins = f['Tbin'][:]
         
     label_list = ['%d MHz - %d MHz'%(fbins[i], fbins[i+1]) for i in range(len(fbins)-1)]
@@ -170,4 +171,5 @@ def plot_rfi_hist_multi(hist_file, output=None):
     ax.add_artist(leg1)
     
     if output is not None:
-        fig.savefig(output, dpi=200)
+        #fig.savefig(output, dpi=200)
+        fig.savefig(output)

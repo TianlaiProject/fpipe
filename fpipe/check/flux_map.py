@@ -50,22 +50,22 @@ def read_flux_pix(imap, pix_id, freq, flag_iteration):
     spec = flag_spec(imap[:, pix_id], flag_iteration)
     flux = np.ma.median((spec/cf.mJy2K(freq*1.e-3))[~spec.mask])
     flux = flux * 2 # 2 pols
-    
+
     return flux
 
-def read_flux_aperture(imap, pix, nside, freq, pointing, aperture_radius, flag_iteration):
-    
+def read_flux_aperture(imap, pix, nside, freq, pointing, aperture_radius, flag_iteration, 
+        return_spec=False):
+
     ra, dec = pointing
-    
     kernel_fwhm = 3./60. * 1420. / freq * 2
     #kernel_fwhm = 3./60. * np.ones_like(freq)
     kernel_sig = kernel_fwhm  / (2. * np.sqrt(2.*np.log(2.)))
-    
+
     _ar = aperture_radius / 60. * np.pi / 180. # convert to radians
     _pt = hp.ang2vec(ra, dec, lonlat=True)
     _pix = hp.query_disc(nside, _pt, _ar, inclusive=True)
     
-    if len(_pix) == 0: return None
+    if len(_pix) == 0: return None, None
     
     _flx_from_map = []
     _kernel_list  = []
@@ -82,8 +82,6 @@ def read_flux_aperture(imap, pix, nside, freq, pointing, aperture_radius, flag_i
         P = np.exp(-0.5 * (P / kernel_sig) ** 2)
         
         P[P<0.01] = 0
-        #P /= 2.
-        #print(P)
 
         spec = flag_spec(imap[:, pix_id[0]], flag_iteration)/cf.mJy2K(freq*1.e-3)
         spec *= 2. # 2 pols
@@ -93,7 +91,7 @@ def read_flux_aperture(imap, pix, nside, freq, pointing, aperture_radius, flag_i
         _flx_from_map.append((spec)[None, :])
         _kernel_list.append(P[None, :])
         
-    if len(_flx_from_map) == 0: return None
+    if len(_flx_from_map) == 0: return None, None
     
     _flx_from_map = np.ma.concatenate(_flx_from_map, 0)
     _kernel_list  = np.ma.concatenate(_kernel_list, 0)
@@ -113,13 +111,15 @@ def read_flux_aperture(imap, pix, nside, freq, pointing, aperture_radius, flag_i
     #print(np.median(r[~r.mask]))
     #print('--'*10)
     
-    return np.median(r[~r.mask]), np.median(e[~r.mask])
-    
+    if return_spec:
+        return r, e
+    else:
+        return np.median(r[~r.mask]), np.median(e[~r.mask])
 
-def read_flux(map_info, sim_info, nvss_cat_list, flux_key='NVSS_FLUX', name_key='NVSS_ID',
+def read_flux(map_info, sim_info, nvss_cat_list=None, flux_key='NVSS_FLUX', name_key='NVSS_ID',
               flux_lim = 10, iso_threshold = 0, max_major_axis = 100, 
               flag_iteration=0, freq_min = 1400 - 25, freq_max = 1400 + 25,
-              aperture_radius=0, nvss_range = None):
+              aperture_radius=0, nvss_range = None, cat_radecflx=None):
     
     '''
     
@@ -141,9 +141,17 @@ def read_flux(map_info, sim_info, nvss_cat_list, flux_key='NVSS_FLUX', name_key=
 
     if nvss_range is None:
         nvss_range = [[imap_ra.min(), imap_ra.max(), imap_dec.min(), imap_dec.max()],]
-    nvss_ra, nvss_dec, nvss_flx, nvss_name =\
-        cf.load_catalogue(nvss_cat_list, nvss_range, flux_key, name_key, 
-                          flux_lim, iso_threshold, max_major_axis)
+
+    if nvss_cat_list is not None:
+        nvss_ra, nvss_dec, nvss_flx, nvss_name, nvss_rms =\
+            cf.load_catalogue(nvss_cat_list, nvss_range, flux_key, name_key, 
+                              flux_lim, iso_threshold, max_major_axis)
+    else:
+        nvss_ra  = cat_radecflx[:, 0]
+        nvss_dec = cat_radecflx[:, 1]
+        nvss_flx = cat_radecflx[:, 2]
+        #nvss_name = ['%03d'i for i in range(nvss_ra.shape[0])]
+
     nvss_numb = nvss_ra.shape[0]
 
     results = []
@@ -436,7 +444,7 @@ def plot_coord_partial(imap_real, imap_sim, ra_s, dec_s, tod_path, imap_shp = (1
         iso_threshold = 0
         max_major_axis = 1000
         
-        nvss_ra, nvss_dec, nvss_flx, nvss_name =\
+        nvss_ra, nvss_dec, nvss_flx, nvss_name, nvss_rms =\
         cf.load_catalogue(nvss_path, nvss_range, flux_key, name_key, 
                           flux_lim, iso_threshold, max_major_axis)
         #print(nvss_ra.min(), nvss_ra.max(), nvss_dec.min(), nvss_dec.max())
@@ -518,7 +526,7 @@ def plot_map_partial(imap_real, imap_sim, ra, dec, imap_shp = (100, 50),
         iso_threshold = 0
         max_major_axis = 1000
         
-        nvss_ra, nvss_dec, nvss_flx, nvss_name =\
+        nvss_ra, nvss_dec, nvss_flx, nvss_name, nvss_rms =\
         cf.load_catalogue(nvss_path, nvss_range, flux_key, name_key, 
                           flux_lim, iso_threshold, max_major_axis)
         #print(nvss_ra.min(), nvss_ra.max(), nvss_dec.min(), nvss_dec.max())
@@ -842,7 +850,8 @@ def plot_dNdS_multi(results_list, label_list, output=None):
     if output is not None:
         fig.savefig(output, dpi=200)
 
-def plot_dNdS(results, axes=None, flx_min=2., flx_max=800., color='r'):
+def plot_dNdS(results, axes=None, flx_min=2., flx_max=800., nbin=20, color='r', do_corr=True,
+        plot_input=True, vmax=1.e3, vmin=1.e-2):
     
     if axes is None:
         fig = plt.figure(figsize=(8, 4))
@@ -852,25 +861,31 @@ def plot_dNdS(results, axes=None, flx_min=2., flx_max=800., color='r'):
 
     S_area = 60. * (np.pi / 180.)**2.
     
-    flx_bin_e = np.logspace(np.log10(flx_min), np.log10(flx_max), 16)
+    flx_bin_e = np.logspace(np.log10(flx_min), np.log10(flx_max), nbin+1)
     dflx_bin = flx_bin_e[1:]/flx_bin_e[:-1]
     flx_bin_c = flx_bin_e[:-1] * ( dflx_bin ** 0.5 )
     dflx = (flx_bin_e[1:] - flx_bin_e[:-1]) * 1.e-3
 
     dSdN = np.histogram(results[:, 2], bins=flx_bin_e)[0] / dflx / S_area
-    corr = results[:, 2] - results[:, 4]
+    if do_corr:
+        corr = results[:, 2] - results[:, 4]
+    else:
+        corr = 0
     fast_flx = results[:, 3] + corr
     dSdN_fast = np.histogram(fast_flx, bins=flx_bin_e)[0]/ dflx / S_area
     
-    ax.plot(flx_bin_c, dSdN * ((flx_bin_c * 1.e-3) ** 2.5), color=color, ls='--', lw=2.5, drawstyle='steps-mid')
-    ax.plot(flx_bin_c, dSdN_fast * ((flx_bin_c * 1.e-3) ** 2.5), 'o-', color=color, mfc='w', mew=1.5, lw=2.)
+    if plot_input:
+        ax.plot(flx_bin_c, dSdN * ((flx_bin_c * 1.e-3) ** 2.5), color=color, ls='--', 
+                lw=2.5, drawstyle='steps-mid')
+    ax.plot(flx_bin_c, dSdN_fast * ((flx_bin_c * 1.e-3) ** 2.5), 'o-', color=color, 
+            mfc='w', mew=1.5, lw=2.)
     
     ax.loglog()
     ax.set_ylabel(r'$S^{5/2}{\rm d}N/{\rm d}S\,[{\rm Jy}^{3/2}{\rm sr}^{-1}] $')
     ax.set_xlabel(r'$S\,[{\rm mJy}]$')
     
     ax.set_xlim(flx_min, flx_max)
-    ax.set_ylim(0.1, 1000)
+    ax.set_ylim(vmin, vmax)
 
     return fig, ax
     

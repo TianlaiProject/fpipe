@@ -390,7 +390,7 @@ def plot_rms_hist_low_and_high_band(hist_l, hist_h, bc_l, bc_h, be_l, be_h, freq
     ax_l.legend(title='1050-1150 MHz')
     ax_l.set_xlim(*xlim)
     ax_l.set_ylim(*ylim)
-    ax_l.set_xlabel('T [K]')
+    ax_l.set_xlabel(r'$T\,[{\rm K}]$')
     ax_l.set_ylabel('N')
     ax_l.semilogy()
     
@@ -398,7 +398,7 @@ def plot_rms_hist_low_and_high_band(hist_l, hist_h, bc_l, bc_h, be_l, be_h, freq
     ax_h.semilogy()
     ax_h.legend(title='1323-1450 MHz')
     ax_h.set_yticklabels([])
-    ax_h.set_xlabel('T [K]')
+    ax_h.set_xlabel(r'$T\,[{\rm K}]$')
     ax_h.set_xlim(*xlim)
     ax_h.set_ylim(*ylim)
     
@@ -436,11 +436,12 @@ def plot_rms_beam(rms_low, rms_hig):
     ax.set_ylim(0, 150)
     
     
-    ax.set_ylabel('r.m.s [mK]')
+    ax.set_ylabel(r'${\rm r.m.s}\, [{\rm mK}]$')
     ax.set_xlabel('Feed \#')
     
     ax.legend()
     
-    fig.savefig('sigma_beams.png', dpi=150)
+    #fig.savefig('sigma_beams.png', dpi=150)
+    fig.savefig('plot/plots_sigma_beams.pdf')
 
 

@@ -182,12 +182,14 @@ class Apply_EtaA(timestream_task.TimestreamTask):
 
 
 def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_path,
-                    blk_st=1, blk_ed=7, bandpass_temp='%s_arcdrift%04d-%04d'):
+                    blk_st=1, blk_ed=7, bandpass_temp='%s_arcdrift%04d-%04d',
+                    window_size=100.):
 
     #bandpass_temp = '%s_arcdrift%04d-%04d'
 
     time_list = []
     bandpass_combined = []
+    mask_list = []
     for block_id in range(blk_st, blk_ed+1):
 
         print(bandpass_temp%(bandpass_name, block_id, block_id))
@@ -197,10 +199,13 @@ def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_p
         bandpass = np.ma.array(bandpass, mask=False)
         #bandpass_smooth = medfilt(bandpass, [1, 201, 1])
         #bandpass_smooth = np.ma.array(bandpass_smooth, mask=False)
-        bandpass_smooth = smooth_bandpass(bandpass.copy(), axis=1)
+        bandpass_smooth, mask = smooth_bandpass(bandpass.copy(), axis=1, window_size=window_size)
         bandpass_combined.append(bandpass_smooth.copy())
+        mask_list.append(mask)
 
     bandpass_combined = np.array(bandpass_combined)
+
+    mask_list = np.array(mask_list)
 
     time_list = np.concatenate(time_list)
 
@@ -209,6 +214,7 @@ def output_smoothed_bandpass(bandpass_path, bandpass_name, tnoise_path, output_p
         f['bandpass'] = bandpass_combined
         f['freq'] = freq
         f['time'] = time_list
+        f['mask'] = mask_list
 
 def load_bandpass(bandpass_path, bandpass_temp, tnoise_path=None,
                   freq_bands=['1050-1150MHz', '1150-1250MHz', '1250-1450MHz']):
@@ -239,7 +245,7 @@ def load_bandpass(bandpass_path, bandpass_temp, tnoise_path=None,
     #print time
     return bandpass, freq, time
 
-def smooth_bandpass(bandpass, axis=0):
+def smooth_bandpass(bandpass, axis=0, window_size=100.):
 
     kernel = [1,] * bandpass.ndim
     kernel[axis] = 501
@@ -251,10 +257,12 @@ def smooth_bandpass(bandpass, axis=0):
     _s = [slice(None), ] * bandpass.ndim
     _s[axis] = None
     _s = tuple(_s)
-    for i in range(5):
+    for i in range(20):
         std = np.ma.std(_bandpass_flat, axis=axis)
-        msk = np.abs(_bandpass_flat) - 3 * std[_s] > 0
+        msk = np.ma.abs(_bandpass_flat) - 3.0 * std[_s] > 0
+        if not np.any(msk): break
         _bandpass_flat.mask += msk
+        _bandpass_flat[msk] = 0.
 
     msk = _bandpass_flat.mask
     bandpass[msk] = 0
@@ -262,9 +270,10 @@ def smooth_bandpass(bandpass, axis=0):
 
     bandpass += _bandpass_smooth
 
-    b, a = signal.butter( 3, 0.05 * 0.209 )
+    #window_size = 1. / (0.05 * 0.209)
+    b, a = signal.butter( 3,  1./window_size)
 
-    return signal.filtfilt(b, a, bandpass, axis=axis)
+    return signal.filtfilt(b, a, bandpass, axis=axis), msk
 
 def ND_statics(file_list, gi=0, on_t=1):
 

@@ -24,6 +24,8 @@ class Correct_Coord(timestream_task.TimestreamTask):
         coord_file = self.params['coord_file']
         feed_rotation = self.params['feed_rotation']
         time_coord, az_coord, alt_coord = coord.xyz2azalt(coord_file)
+
+        time_coord, angle = coord.load_rotation_angle(coord_file)
         
         az = az_coord.copy()
         alt= alt_coord.copy()
@@ -32,11 +34,18 @@ class Correct_Coord(timestream_task.TimestreamTask):
                  bounds_error=False, fill_value="extrapolate")
         alt_f = interp1d(time_coord.unix, alt, kind='nearest', 
                  bounds_error=False, fill_value="extrapolate")
+
+        angle_f = interp1d(time_coord.unix, angle.value, kind='nearest', 
+                bounds_error=False, fill_value="extrapolate")
+
+
         
         time = ts['sec1970'][:].local_array
 
         alt0 = alt_f(time)
         az0 = az_f(time)
+        feed_rotation = angle_f(time)
+        print(feed_rotation)
         az, alt, ra_new, dec_new = coord.get_pointing_any_scan(time, alt0, az0, 
                                 time_format='unix', feed_rotation=feed_rotation)
 

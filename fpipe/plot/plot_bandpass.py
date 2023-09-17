@@ -17,6 +17,7 @@ from fpipe.timestream import destripe, bandpass_cal
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import cm
+import matplotlib.gridspec as gridspec
 
 from astropy import units as u
 import matplotlib.dates as mdates
@@ -40,7 +41,7 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
 
     f_min = bc.min()
     f_max = bc.max()
-    fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, title=title)
+    fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, title=title, figsize=(16, 6))
 
     for bi in range(19):
         ii = int(bi / 5)
@@ -68,7 +69,7 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
         else: ax.set_yticklabels([])
 
     if output is not None:
-        fig.savefig(output, format='png')
+        fig.savefig(output)
         plt.show()
         plt.clf()
 
@@ -92,95 +93,37 @@ def plot_gt_ps(gt_ps_file, Tnoise_file=None, title='', output=None, ymin=5.e-3, 
     return _result
     #return np.array(paras_list), bc, ps_result, er_result
 
-def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None, 
+def plot_gt(file_name, l=10, fk=0.01, alpha=1.5, title='', output=None, 
         do_destripe=False, gtps_file=None):
 
-    #fk = 0.01
-    #alpha = 1.5
-
-    #if gtps_file is not None:
-    #    with h5.File(gtps_file, 'r') as f:
-    #        ps_para = f['paras'][:]
-
-    #with h5.File(file_name, 'r') as f:
-    #    nd    = f['gtgnu'][:]
-    #    time  = f['time'][:]
-    #    freq  = f['freq'][:]
-    #    mask  = f['mask'][:]
-
-    #nd = np.ma.array(nd, mask=mask)
-    #nd = np.ma.masked_invalid(nd)
-
-    #_nd_t = np.ma.mean(nd, axis=1, )
-    #good = (np.abs(_nd_t - np.ma.mean(_nd_t, axis=0)[None, :,:]) \
-    #        - 6.*np.ma.std(_nd_t, axis=0)[None, :, :])<0
-
-    ##time -= time[0]
-    ##time /= 3600.
-    #xx = time - time[0]
-    #xx /= 3600.
-
-    fig, axes = axes_utils.setup_axes(5, 4, colorbar=False, title=title)
+    fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, title=title, 
+            figsize=(16, 6))
 
     for bi in range(19):
-        i = int(bi / 4)
-        j = int(bi - i * 4)
+        i = int(bi // 5)
+        j = int(bi - i * 5)
 
         ax = axes[bi]
-
-        #gt = np.ma.median(nd[:, :, :, bi], axis=1)
-        #var = np.ma.var(nd[:, :, :, bi], axis=1)
-        #var = np.ma.median(nd[:, :, :, bi], axis=1)
-        #var[var==0] = np.inf
 
         gt, time, gt_smooth = destripe.get_gt(bi, file_name, gtps_file, l)
 
         xx = time - time[0]
         xx /= 3600.
 
-        ax.plot(xx, gt[:, 0], 'r-', lw=0.1)
-        ax.plot(xx, gt[:, 1], 'b-', lw=0.1)
+        ax.plot(xx, gt[:, 0], 'r.', ms=1.5, mfc='r', mec='none')
+        ax.plot(xx, gt[:, 1], 'b.', ms=1.5, mfc='b', mec='none')
 
-        #if do_destripe:
-        #    gt_m = np.ma.median(gt, axis=0)
-        #    gt -= gt_m[None, :]
-
-        #    if gtps_file is not None:
-        #        #fk = min(ps_para[bi, 0, 1], 2.e-3)
-        #        #alpha = min(ps_para[bi, 0, 2], 1.9)
-        #        fk    = ps_para[bi, 0, 1]
-        #        alpha = ps_para[bi, 0, 2]
-        #        #print '%02d: XX [%e, %e]  '%(bi+1, fk, alpha),
-        #    gt[:, 0] = destripe.destriping(l,
-        #                                   gt[good[:, 0, bi], 0],
-        #                                   var[good[:, 0, bi], 0],
-        #                                   time[good[:, 0, bi]],
-        #                                   fk, alpha)(time)
-        #    if gtps_file is not None:
-        #        #fk = min(ps_para[bi, 1, 1], 2.e-3)
-        #        #alpha = min(ps_para[bi, 1, 2], 1.9)
-        #        fk    = ps_para[bi, 1, 1]
-        #        alpha = ps_para[bi, 1, 2]
-        #        #print 'YY [%e, %e]  '%(fk, alpha)
-        #    gt[:, 1] = destripe.destriping(l,
-        #                                   gt[good[:, 0, bi], 1],
-        #                                   var[good[:, 0, bi], 1],
-        #                                   time[good[:, 0, bi]],
-        #                                   fk, alpha)(time)
-        #    #gt = median_filter(gt, [11, 1])
-
-        #    gt += gt_m[None, :]
-
-        ax.plot(xx, gt_smooth[:, 0], 'r-', lw=1)
-        ax.plot(xx, gt_smooth[:, 1], 'b-', lw=1)
+        ax.plot(xx, gt_smooth[:, 0], 'r-', lw=1.5)
+        ax.plot(xx, gt_smooth[:, 1], 'b-', lw=1.5)
 
         #ax.legend(title='Feed %02d'%(bi+1), loc=2)
         ax.text(0.04, 0.8, 'Feed %02d'%(bi+1), transform=ax.transAxes,
                 bbox=dict(facecolor='w', alpha=0.5, ec='none'))
-        ax.set_ylim(0.81, 1.19)
+        #ax.set_ylim(0.81, 1.19)
+        ax.set_ylim(0.91, 1.09)
         ax.set_xlim(xx[1], xx[-1])
         #ax.semilogy()
-        if i != 4:
+        if i != 3:
             ax.set_xticklabels([])
         else:
             ax.set_xlabel('Time [hr]')
@@ -190,7 +133,44 @@ def plot_gt(file_name, l=5, fk=0.01, alpha=1.5, title='', output=None,
             ax.set_ylabel(r'$g(t)$')
 
     if output is not None:
-        fig.savefig(output, format='png')
+        fig.savefig(output)
+        plt.show()
+        plt.clf()
+
+def plot_gt_one(file_name, l=10, fk=0.01, alpha=1.5, title='', output=None, 
+        do_destripe=False, gtps_file=None, feed=0):
+
+    #fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, title=title)
+
+    bi = feed
+
+    fig = plt.figure(figsize=(7, 4))
+    ax  = fig.add_axes([0.13, 0.15, 0.83, 0.80])
+
+    gt, time, gt_smooth = destripe.get_gt(bi, file_name, gtps_file, l)
+
+    xx = time - time[0]
+    xx /= 3600.
+
+    ax.plot(xx, gt[:, 0], 'r.', ms=2.0, mew=0.1, mfc='none')
+    ax.plot(xx, gt[:, 1], 'b.', ms=2.0, mew=0.1, mfc='none')
+
+    ax.plot(xx, gt_smooth[:, 0], 'r-', lw=1.0, label='XX polarization')
+    ax.plot(xx, gt_smooth[:, 1], 'b-', lw=1.0, label='YY polarization')
+
+    #ax.text(0.04, 0.8, 'Feed %02d'%(bi+1), transform=ax.transAxes,
+    #        bbox=dict(facecolor='w', alpha=0.5, ec='none'))
+    #ax.set_ylim(0.81, 1.19)
+    ax.set_ylim(0.91, 1.09)
+    ax.set_xlim(xx[1], xx[-1])
+    #ax.semilogy()
+    ax.set_xlabel('Time [hr]')
+    ax.set_ylabel(r'$g(t)$')
+
+    ax.legend(title='Feed %02d'%(bi+1), loc=2)
+
+    if output is not None:
+        fig.savefig(output, dpi=600)
         plt.show()
         plt.clf()
 
@@ -522,30 +502,49 @@ def plot_bandpass(bandpass_path, bandpass_name, pol=0,
         
 def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
                       ymin=None, ymax=None, normalize=True, ratio=True, 
-                      output_path=None):
+                      output_path=None, freq_mask=None):
     
     
     _pol = ['XX', 'YY'][pol]
     b = feed
     
     fig = plt.figure(figsize=[5, 3])
-    gs = gridspec.GridSpec(1, 1, left=0.12, bottom=0.15, top=0.95, right=0.95,
+    gs = gridspec.GridSpec(1, 1, left=0.15, bottom=0.2, top=0.95, right=0.95,
                            figure=fig, wspace=0.0, hspace=0.0)
     ax = fig.add_subplot(gs[0, 0])
     
     suffix = ''
     if normalize: suffix += '_norm'
     if ratio: suffix += '_ratio'
-    bandpass_ref = None
     time_list = []
 
-    with h5.File(bandpass_path + bandpass_name + '.h5', 'r') as f:
+    with h5.File(bandpass_path + 'bandpass_' + bandpass_name + '.h5', 'r') as f:
         bandpass_combined = f['bandpass'][:]
         freq     = f['freq'][:]
         time_list = f['time'][:]
-    
+        mask     = f['mask'][:, b, :, pol]
+
+    bandpass_ref = None
+    #bandpass_ref = np.median(bandpass_combined, axis=0)
+    #if normalize:
+    #    bandpass_ref /= np.median(bandpass_ref, axis=1)[:, None, :]
+
+    if freq_mask is None:
+        mask = mask.astype('int') 
+        n_mask = mask.shape[0]
+        mask = [np.sum(mask, axis=0) > n_mask * 0.2,
+                #np.sum(mask, axis=0) > n_mask * 0.2,
+                #np.sum(mask, axis=0) > n_mask * 0.5, 
+                ]
+        #mask = np.any(mask, axis=0)
+        #mask = np.all(mask, axis=0)
+    else:
+        mask = [freq_mask, ]
+
     #print bandpass_combined.shape
     cnorm = mpl.colors.Normalize(vmin=0, vmax=bandpass_combined.shape[0])
+
+
 
     #for block_id in range(blk_st, blk_ed+1):
     for ii in range(bandpass_combined.shape[0]):
@@ -561,20 +560,30 @@ def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
                 bandpass_ref = bandpass_smooth.copy()
             #print bandpass_ref.min(), bandpass_ref.max()
             bandpass_smooth /= bandpass_ref.copy()
-            ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+            ax.axhline(1, 0, 1, color='k', linewidth=2, linestyle='--', zorder=100)
+            #ylabel = r'$g(\nu, t) / g(\nu, t_0)$'
+            ylabel = r'$\gamma(t_{\rm b}, \nu)$'
         else:
-            ylabel = r'$g(\nu, t)$'
+            ylabel = r'$\bar{g}^{\rm n}(t_{\rm b}, \nu)$'
 
-        ax.plot(freq, bandpass_smooth[b, :, pol], c=cm.jet(cnorm(ii)), 
-                lw=0.8)
+        _spec = bandpass_smooth[b, :, pol]
+        #_spec = np.ma.array(_spec, mask=mask)
+        ax.plot(freq, _spec, c=cm.jet(cnorm(ii)), lw=0.8)
+
+        #yy = np.ones_like(freq) * ymin
+        #yy[mask] = ymax
+        _c = ['0.7', 'k']
+        for mi, m in enumerate(mask):
+            ax.fill_between(freq, ymax, ymin, where=m, color=_c[mi], alpha=1, 
+                    ec=_c[mi], lw=0.01)
 
         ax.set_ylim(ymin, ymax)
         ax.set_xlim(freq.min(), freq.max())
         
         if ii == 0:
-            ax.text(0.70, 0.9, 'Feed%02d %s'%(b, _pol), transform=ax.transAxes)
+            ax.text(0.70, 0.9, 'Feed%02d %s'%(b+1, _pol), transform=ax.transAxes)
 
-            ax.set_xlabel('Frequency [MHz]')
+            ax.set_xlabel(r'${\rm Frequency}\, [{\rm MHz}]$')
             ax.set_ylabel(ylabel)
             ax.minorticks_on()
 
@@ -599,6 +608,81 @@ def plot_bandpass_one(bandpass_path, bandpass_name, pol=0, feed=0,
     #fig.colorbar(sm, cax=cax, orientation='horizontal')
     #cax.set_xlabel('Time [hr]')
     if output_path is not None:
-        output_name = '%s_%s%s_F%02d.pdf'%(bandpass_name, _pol, suffix, feed)
+        output_name = '%s%s_F%02d.pdf'%(_pol, suffix, feed)
         fig.savefig(output_path + output_name)
     
+def plot_bandpass_days(bandpass_path, bandpass_name, pol=0, feed=0,
+                      ymin=None, ymax=None, normalize=True, ratio=True, 
+                      output_path=None, axes=None, bandpass_ref = None,
+                      color = 'r', label=''):
+    
+    
+    _pol = ['XX', 'YY'][pol]
+    b = feed
+    
+    if axes is None:
+        fig = plt.figure(figsize=[5, 3])
+        gs = gridspec.GridSpec(1, 1, left=0.15, bottom=0.2, top=0.95, right=0.95,
+                               figure=fig, wspace=0.0, hspace=0.0)
+        ax = fig.add_subplot(gs[0, 0])
+    else:
+        fig, ax = axes
+    
+    suffix = ''
+    if normalize: suffix += '_norm'
+    if ratio: suffix += '_ratio'
+    time_list = []
+
+    with h5.File(bandpass_path + 'bandpass_' + bandpass_name + '.h5', 'r') as f:
+        bandpass_combined = f['bandpass'][:, b, :, pol]
+        freq     = f['freq'][:]
+        time_list = f['time'][:]
+
+    if bandpass_ref is None:
+        bandpass_ref = np.median(bandpass_combined, axis=0)
+        if normalize:
+            bandpass_ref /= np.median(bandpass_ref)
+
+    cnorm = mpl.colors.Normalize(vmin=0, vmax=bandpass_combined.shape[0])
+
+    if ratio:
+        ax.axhline(1, 0, 1, color='k', linewidth=2, linestyle='--', zorder=100)
+        ylabel = r'$\gamma(t_{\rm b}, \nu)$'
+    else:
+        ylabel = r'$\bar{g}^{\rm n}(t_{\rm b}, \nu)$'
+
+    ax.set_ylim(ymin, ymax)
+    ax.set_xlim(freq.min(), freq.max())
+    ax.text(0.75, 0.1, 'Feed%02d %s'%(b+1, _pol), transform=ax.transAxes)
+    ax.set_xlabel(r'${\rm Frequency}\, [{\rm MHz}]$')
+    ax.set_ylabel(ylabel)
+    ax.minorticks_on()
+
+    bandpass_combined = np.median(bandpass_combined, axis=0)
+    if normalize:
+        bandpass_combined /= np.median(bandpass_combined)
+    if ratio:
+        bandpass_combined /= bandpass_ref.copy()
+    ax.plot(freq, bandpass_combined, c=color, lw=1.0, label=label)
+
+    ##print time_list
+    #time_list -= time_list[0]
+    #time_list /= 3600.
+    #tnorm = mpl.colors.Normalize(vmin=time_list.min(), vmax=time_list.max())
+
+    #sm = cm.ScalarMappable(cmap=cm.jet, norm=tnorm)
+    ## fake up the array of the scalar mappable. Urgh...
+    #sm._A = []
+    #
+    ##ax = fig.add_subplot(gs[-1, -1])
+    #cax = fig.add_axes([0.76, 0.18, 0.20, 0.01])
+    #fig.colorbar(sm, cax=cax, orientation='horizontal')
+    #cax.set_xlabel('Time [hr]')
+    #if output_path is not None:
+    #    output_name = '%s%s_F%02d.pdf'%(_pol, suffix, feed)
+    #    fig.savefig(output_path + output_name)
+
+    if ratio:
+        return (fig, ax), bandpass_ref
+    else:
+        return fig, ax

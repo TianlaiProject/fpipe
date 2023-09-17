@@ -236,7 +236,7 @@ def _plot_map_hp(imap, pixs, nside, imap_shp = (600, 360),
                               frame_class=RectangularFrame)
             cax = fig.add_axes([0.95, 0.1, 0.01, 0.8])
         else:
-            ax = fig.add_axes([0.06, 0.1, 0.92, 0.8], projection=projection,
+            ax = fig.add_axes([0.06, 0.1, 0.92, 0.88], projection=projection,
                               frame_class=RectangularFrame)
     else:
         if len(axes) == 3:

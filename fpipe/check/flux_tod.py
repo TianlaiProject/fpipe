@@ -45,7 +45,7 @@ def mJy2K(freq, eta=1., beam_off=0, fwhm=None):
     _sigma = fwhm_func(fwhm, freq) * 60.
 
     if beam_off != 0:
-        fact = np.exp(-0.5 * beam_off**2 / (_sigma/2./(2.*np.log(2.))**0.5 )**2 )
+        fact = np.exp(-0.5 * (beam_off*60)**2 / (_sigma/2./(2.*np.log(2.))**0.5 )**2 )
     else:
         fact = 1.
 
@@ -55,6 +55,7 @@ def get_nvss_radec(nvss_path, nvss_range):
 
     hdulist = pyfits.open(nvss_path)
     data = hdulist[1].data
+    #print(data.names)
 
     _sel = np.zeros(data['RA'].shape[0], dtype ='bool')
     for _nvss_range in nvss_range:
@@ -75,7 +76,7 @@ def get_nvss_radec(nvss_path, nvss_range):
 def load_catalogue(nvss_path_list, nvss_range, flux_key, name_key, 
         flux_lim=10, threshold=0, max_major_axis = 10000):
 
-    nvss_ra, nvss_dec, nvss_flx, nvss_name = [], [], [], []
+    nvss_ra, nvss_dec, nvss_flx, nvss_rms, nvss_name = [], [], [], [], []
     first_major, first_minor,  = [], []
     for nvss_path in nvss_path_list:
         nvss_cat = get_nvss_radec(nvss_path, nvss_range)
@@ -95,6 +96,7 @@ def load_catalogue(nvss_path_list, nvss_range, flux_key, name_key,
         #nvss_ra.append(nvss_cat['NVSS_RA'][nvss_sel])
         #nvss_dec.append(nvss_cat['NVSS_DEC'][nvss_sel])
         nvss_flx.append(nvss_cat[flux_key][nvss_sel])
+        nvss_rms.append(nvss_cat['NVSS_I_RMS'][nvss_sel])
         nvss_name.append(nvss_cat[name_key][nvss_sel])
 
         del nvss_cat
@@ -103,6 +105,7 @@ def load_catalogue(nvss_path_list, nvss_range, flux_key, name_key,
     nvss_ra = np.concatenate(nvss_ra, axis=0)
     nvss_dec = np.concatenate(nvss_dec, axis=0)
     nvss_flx = np.concatenate(nvss_flx, axis=0)
+    nvss_rms = np.concatenate(nvss_rms, axis=0)
     nvss_name = np.concatenate(nvss_name, axis=0)
     first_major = np.concatenate(first_major, axis=0)
     first_minor = np.concatenate(first_minor, axis=0)
@@ -113,13 +116,14 @@ def load_catalogue(nvss_path_list, nvss_range, flux_key, name_key,
     nvss_ra  = nvss_ra[redu]
     nvss_dec = nvss_dec[redu]
     nvss_flx = nvss_flx[redu]
+    nvss_rms = nvss_rms[redu]
     first_major = first_major[redu]
     first_minor = first_minor[redu]
     print('%d of %d sources left with redundancy removing'%(nvss_ra.shape[0], n_cat))
 
     if threshold > 0:
-        nvss_ra, nvss_dec, nvss_flx, nvss_name, first_major, first_minor = \
-                isolate_source(nvss_ra, nvss_dec, nvss_flx, nvss_name, 
+        nvss_ra, nvss_dec, nvss_flx, nvss_rms, nvss_name, first_major, first_minor = \
+                isolate_source(nvss_ra, nvss_dec, nvss_flx, nvss_rms, nvss_name, 
                         first_major, first_minor, threshold=threshold)
 
     nvss_sel = nvss_flx > flux_lim
@@ -129,10 +133,12 @@ def load_catalogue(nvss_path_list, nvss_range, flux_key, name_key,
     #nvss_sel = nvss_sel * point_source
     nvss_sel = nvss_sel * (first_major < max_major_axis)
 
-    return nvss_ra[nvss_sel], nvss_dec[nvss_sel], nvss_flx[nvss_sel], nvss_name[nvss_sel]
+    return nvss_ra[nvss_sel], nvss_dec[nvss_sel], nvss_flx[nvss_sel], nvss_name[nvss_sel],\
+            nvss_rms[nvss_sel]
 
 
-def isolate_source(nvss_ra, nvss_dec, nvss_flx, nvss_name, first_major, first_minor, threshold=2.):
+def isolate_source(nvss_ra, nvss_dec, nvss_flx, nvss_rms, nvss_name, first_major, 
+        first_minor, threshold=2.):
 
     r = np.sin(np.radians(nvss_dec[:, None])) * np.sin(np.radians(nvss_dec[None, :])) \
       + np.cos(np.radians(nvss_dec[:, None])) * np.cos(np.radians(nvss_dec[None, :])) \
@@ -152,6 +158,7 @@ def isolate_source(nvss_ra, nvss_dec, nvss_flx, nvss_name, first_major, first_mi
     nvss_ra   = nvss_ra[~bad]
     nvss_dec  = nvss_dec[~bad]
     nvss_flx  = nvss_flx[~bad]
+    nvss_rms  = nvss_rms[~bad]
     nvss_name = nvss_name[~bad]
     first_major = first_major[~bad]
     first_minor = first_minor[~bad]
@@ -162,7 +169,7 @@ def isolate_source(nvss_ra, nvss_dec, nvss_flx, nvss_name, first_major, first_mi
     del r
     gc.collect()
 
-    return nvss_ra, nvss_dec, nvss_flx, nvss_name, first_major, first_minor
+    return nvss_ra, nvss_dec, nvss_flx, nvss_rms, nvss_name, first_major, first_minor
 
 
 
@@ -177,7 +184,7 @@ def iter_nvss_flux_tod(fdata, nvss_cat, fwhm=None, beam_list=None, max_dist=3):
     vis.mask += ns_on[:, None, None, :]
     ra, dec = fdata.ra, fdata.dec
 
-    nvss_ra, nvss_dec, nvss_flx, nvss_name = nvss_cat
+    nvss_ra, nvss_dec, nvss_flx, nvss_name, nvss_rms = nvss_cat
 
     if beam_list is None:
         beam_list = fdata.ants[:, 0]
@@ -246,7 +253,7 @@ def iter_nvss_flux_tod(fdata, nvss_cat, fwhm=None, beam_list=None, max_dist=3):
             flux_measured_rms = np.ma.std(flux_measured, axis=1) / np.sqrt(norm)
             flux_measured = np.ma.median(flux_measured, axis=1)
 
-            yield beam, nvss_name[nvss_idx], nvss_flx[nvss_idx], \
+            yield beam, nvss_name[nvss_idx], nvss_flx[nvss_idx], nvss_rms[nvss_idx],\
                   nvss_ra[0, nvss_idx], nvss_dec[0, nvss_idx], \
                   flux_model, obs_time, flux_measured, flux_measured_rms, \
                   rr[:, nvss_idx], pp[:, nvss_idx]
@@ -288,7 +295,7 @@ def output_source(file_root, file_name_list, output_path, nvss_path_list,
         with h5py.File(output_path + output_name + '.h5', 'w') as f:
             print(output_name)
             for oo in iter_nvss_flux_tod(fdata, nvss_cat, fwhm, max_dist=max_dist):
-                beam, nvss_name, nvss_flx, nvss_ra,\
+                beam, nvss_name, nvss_flx, nvss_rms, nvss_ra,\
                 nvss_dec, flux_model, obs_time, flux_measured, flux_measured_rms, rr, pp = oo
                 #print nvss_name, flux_measured, flux_measured_rms
                 nvss_used_total.append(nvss_name)
@@ -299,15 +306,16 @@ def output_source(file_root, file_name_list, output_path, nvss_path_list,
                     nvss_name = 'NVSSID_%d'%nvss_name
                 if not np.isfinite(flux_measured[rr.argmin()][0]):
                     continue
-                print('Beam %02d %s [%10.5f %10.5f] TOD:%10.5f +- %10.5f'%(
+                print('Beam %02d %s [%10.5f %10.5f] TOD:%10.5f CAT:%10.5f +- %10.5f'%(
                         beam, nvss_name, nvss_ra, nvss_dec, flux_measured[rr.argmin()][0], 
-                        flux_measured_rms[rr.argmin()][0]))
+                        nvss_flx, nvss_rms))
+                        #flux_measured_rms[rr.argmin()][0]))
                 f['B%02d/%s/NVSS_FLUX'%(beam, nvss_name)] = flux_model
                 f['B%02d/%s/TIME_STEP'%(beam, nvss_name)] = obs_time
                 f['B%02d/%s/FAST_FLUX'%(beam, nvss_name)] = flux_measured
                 f['B%02d/%s/BEAM_DIST'%(beam, nvss_name)] = rr
                 f['B%02d/%s/BEAM_ANGL'%(beam, nvss_name)] = pp
-                f['B%02d/%s/FLUXRADEC'%(beam, nvss_name)] = (nvss_flx, nvss_ra, nvss_dec)
+                f['B%02d/%s/FLUXRADEC'%(beam, nvss_name)] = (nvss_flx, nvss_ra, nvss_dec, nvss_rms)
                 f['B%02d/%s/NVSS_NAME'%(beam, nvss_name)] = nvss_name
         print()
 
@@ -329,7 +337,7 @@ def check_flux_raw(file_list, nvss_path_list, beam_list=None,
                                  flux_lim=10, threshold=6, max_major_axis=20)
 
     for oo in iter_nvss_flux_tod(fdata,nvss_cat,fwhm,beam_list,max_dist=0.5):
-        beam, nvss_name, nvss_flx, nvss_ra,\
+        beam, nvss_name, nvss_flx, nvss_rms, nvss_ra,\
         nvss_dec, flux_model, obs_time, flux_measured, flux_measured_rms, rr, pp = oo
 
         fig = plt.figure(figsize=(6, 2))
@@ -740,7 +748,7 @@ def plot_flux_hist(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
         hist_list.append(hist[None, :])
         hist /= np.sum(hist)
 
-        l = ax.plot(bins_c, hist, '-', color=next(color), drawstyle='steps-mid')[0]
+        l = ax.plot(bins_c, hist, '-', color=next(color), drawstyle='steps-pre')[0]
         #l = ax.plot(bins_c, hist, '.-', color=next(color))[0]
         legend_list.append(mpatches.Patch(color=l.get_color(), label=label))
 
@@ -748,7 +756,7 @@ def plot_flux_hist(flux_path_list, beam_list=[1, ], axes=None, rms_sys=None,
         hist = np.concatenate(hist_list, axis=0)
         hist = np.sum(hist, axis=0)
         hist /= np.sum(hist)
-        ax.plot(bins_c, hist, 'k-', linewidth=2., drawstyle='steps-mid')
+        ax.plot(bins_c, hist, 'k-', linewidth=2., drawstyle='steps-pre')
 
     sigma_list = np.concatenate(sigma_list)
     sigma2 = np.sqrt(np.median(sigma_list ** 2.))
@@ -888,6 +896,7 @@ def plot_fluxfraction_hist_allbeam(flux_diff_path, tod=True, rms_sys=None, ymin=
     #ax.set_xlabel('NVSS Flux at 20cm (mJy)')
     #ax.set_xlabel(r'$ \delta S $')
     ax.set_ylabel(r'$N/N_{\rm total}$')
+    ax.text(0.65, 0.9, 'Central feed', transform=ax.transAxes, fontsize=13)
 
     ax =fig.add_subplot(gs[1, 0])
     beam_list = [2, 3, 4, 5, 6, 7]
@@ -901,6 +910,7 @@ def plot_fluxfraction_hist_allbeam(flux_diff_path, tod=True, rms_sys=None, ymin=
     #ax.set_xlabel(r'$ \delta S $')
     #ax.set_yticklabels([])
     ax.set_ylabel(r'$N/N_{\rm total}$')
+    ax.text(0.65, 0.9, 'Inner-circle feeds', transform=ax.transAxes, fontsize=13)
 
     ax =fig.add_subplot(gs[2, 0])
     beam_list = [8, 9, 10, 11, 12, 13] + [14, 15, 16, 17, 18, 19]
@@ -912,6 +922,7 @@ def plot_fluxfraction_hist_allbeam(flux_diff_path, tod=True, rms_sys=None, ymin=
     #ax.set_ylabel(r'$N/N_{\rm total}$')
     ax.set_ylabel(r'$N/N_{\rm total}$')
     #ax.set_yticklabels([])
+    ax.text(0.65, 0.9, 'Outer-circle feeds', transform=ax.transAxes, fontsize=13)
 
     return fig
 
@@ -1155,6 +1166,7 @@ def plot_flux_allbeam(flux_diff_path, tod=True, rms_sys=None, f_min=None, f_max=
     #ax.set_xlabel('NVSS Flux at 1400 MHz (mJy)')
     #ax.set_xlabel('NVSS Flux (mJy)')
     ax.set_ylabel('Measured Flux (mJy)')
+    ax.text(0.65, 0.1, 'Central feed', transform=ax.transAxes, fontsize=13)
 
     ax =fig.add_subplot(gs[1, 0])
     beam_list = [2, 3, 4, 5, 6, 7]
@@ -1168,6 +1180,7 @@ def plot_flux_allbeam(flux_diff_path, tod=True, rms_sys=None, f_min=None, f_max=
     #ax.set_xlabel('NVSS Flux (mJy)')
     #ax.set_yticklabels([])
     ax.set_ylabel('Measured Flux (mJy)')
+    ax.text(0.65, 0.1, 'Inner-circle feeds', transform=ax.transAxes, fontsize=13)
 
     ax =fig.add_subplot(gs[2, 0])
     beam_list = [8, 9, 10, 11, 12, 13] + [14, 15, 16, 17, 18, 19]
@@ -1178,6 +1191,55 @@ def plot_flux_allbeam(flux_diff_path, tod=True, rms_sys=None, f_min=None, f_max=
     ax.set_ylabel('Measured Flux (mJy)')
     #ax.set_yticklabels([])
     ax.set_xlabel('NVSS Flux (mJy)')
+    ax.text(0.65, 0.1, 'Outer-circle feeds', transform=ax.transAxes, fontsize=13)
+
+    return fig
+
+def plot_flux_allbeam_h(flux_diff_path, tod=True, rms_sys=None, f_min=None, f_max=None):
+
+    fig = plt.figure(figsize = (14, 5))
+    gs = gridspec.GridSpec(1, 3, figure=fig, top=0.95, bottom=0.1, left=0.05, right=0.98,
+                           wspace=0.03, hspace=0.03)
+    #gs = gridspec.GridSpec(1, 3, figure=fig, top=0.98, bottom=0.05, left=0.05, right=0.95,
+    #                       wspace=0.03, hspace=0.03)
+
+    ax =fig.add_subplot(gs[0, 0])
+    beam_list = [1, ]
+    plot_flux_beam(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys, 
+            f_min=f_min, f_max=f_max, tod=tod)
+    #ax.set_xticklabels([])
+    #ax.set_xlabel('NVSS Flux at 20cm (mJy)')
+    #ax.set_xlabel('NVSS Flux at 1400 MHz (mJy)')
+    #ax.set_xlabel('NVSS Flux (mJy)')
+    ax.set_ylabel('Measured Flux (mJy)')
+    ax.set_xlabel('NVSS Flux (mJy)')
+    ax.text(0.45, 0.1, 'Central Feed', transform=ax.transAxes, fontsize=13)
+
+    ax =fig.add_subplot(gs[0, 1])
+    beam_list = [2, 3, 4, 5, 6, 7]
+    plot_flux_beam(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys, 
+            f_min=f_min, f_max=f_max, tod=tod)
+    #ax.set_xlabel('NVSS Flux at 20cm (mJy)')
+    #ax.set_ylabel('Measured Flux at 1400 MHz (mJy)')
+    #ax.set_xticklabels([])
+    #ax.set_xlabel('NVSS Flux at 1400 MHz (mJy)')
+    #ax.set_xticklabels([])
+    #ax.set_xlabel('NVSS Flux (mJy)')
+    ax.set_yticklabels([])
+    #ax.set_ylabel('Measured Flux (mJy)')
+    ax.set_xlabel('NVSS Flux (mJy)')
+    ax.text(0.45, 0.1, 'Inner Circle Feeds', transform=ax.transAxes, fontsize=13)
+
+    ax =fig.add_subplot(gs[0, 2])
+    beam_list = [8, 9, 10, 11, 12, 13] + [14, 15, 16, 17, 18, 19]
+    plot_flux_beam(flux_diff_path, beam_list, axes=(fig, ax), rms_sys=rms_sys, 
+            f_min=f_min, f_max=f_max, tod=tod)
+    ax.set_xlabel('NVSS Flux (mJy)')
+    #ax.set_ylabel(r'$N/N_{\rm total}$')
+    #ax.set_ylabel('Measured Flux (mJy)')
+    ax.set_yticklabels([])
+    ax.set_xlabel('NVSS Flux (mJy)')
+    ax.text(0.45, 0.1, 'Outer Circle Feeds', transform=ax.transAxes, fontsize=13)
 
     return fig
 

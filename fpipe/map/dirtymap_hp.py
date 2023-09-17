@@ -23,6 +23,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         'ra_range' : [130, 135],
         'dec_range' : [26.0, 27.0],
         'center_only' : False, 
+        'use_beamkernel' : True,
     }
     
     prefix = 'dmh_'
@@ -128,6 +129,11 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
         return func
 
     def make_map(self, vis, vis_mask, li, gi, bl, ts, **kwargs):
+
+        if self.params['use_beamkernel']:
+            ts_projection = timestream2map_grid
+        else:
+            ts_projection = timestream2map
         
         #print "make map vis shape = ", vis.shape
         if not isinstance(gi, tuple): gi = (gi, )
@@ -208,7 +214,7 @@ class DirtyMap_healpix(dirtymap.DirtyMap):
             for st in range(0, n_time, tblock_len):
                 et = st + tblock_len
 
-                timestream2map_grid(_vis[st:et, ...],
+                ts_projection(_vis[st:et, ...],
                                _vis_mask[st:et, ...],
                                vis_var[st:et, ...],
                                time[st:et],

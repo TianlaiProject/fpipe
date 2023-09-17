@@ -12,7 +12,9 @@ from astropy.coordinates.angles import Angle
 from scipy.interpolate import interp1d
 from fpipe.utils import axes_utils
 _c_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-           "#8c564b", "#e377c2", "#17becf", "#bcbd22", "#7f7f7f", 'w']
+           "#e377c2", "#17becf", "#bcbd22", "#7f7f7f", "#8c564b", 'w']
+colors = mpl.cm.get_cmap('tab20')
+_c_list = colors(np.arange(0, 20, 1))
 
 
 def iter_file_list(result_path, key_list, beam_list,
@@ -143,7 +145,7 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
 
     _p = ['XX', 'YY']
 
-    fig, axes = axes_utils.setup_axes(5, 4, colorbar=False)
+    fig, axes = axes_utils.setup_axes(4, 5, colorbar=False, figsize=(16, 6))
 
     xmin = 1.e10
     xmax =-1.e10
@@ -198,16 +200,16 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
     #       band_list, tnoise_model, pol):
     for bi in range(19):
 
-        ii = bi // 4
-        jj = bi % 4
+        ii = bi // 5
+        jj = bi % 5
 
         ax = axes[bi]
         ax.plot(eta_f/1.e3, eta_list[bi], color='k', lw=1.0)
-        ax.text(0.1, 0.85, 'Feed%02d'%bi, transform=ax.transAxes)
+        ax.text(0.1, 0.85, 'Feed%02d'%(bi+1), transform=ax.transAxes)
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(0.51, 0.99)
 
-        if ii == 4:
+        if ii == 3:
             ax.set_xlabel('Frequency [GHz]')
         else:
             ax.set_xticklabels([])
@@ -218,10 +220,11 @@ def plot_eta_days(result_path, key_list_dict, beam_list,
             ax.set_yticklabels([])
 
     fig.legend(handles=legend_list, title = '%s Polarization'%_p[pol],
-               frameon=False, loc=4, bbox_to_anchor=(0.94, 0.10), ncol=2)
+               frameon=False, loc=4, bbox_to_anchor=(0.96, 0.12), ncol=2)
 
     if output is not None:
-        fig.savefig(output, format='png', dpi=200)
+        fig.savefig(output, format='png', dpi=400)
+        #fig.savefig(output)
 
 
 def plot_fwhm_days(result_path, key_list_dict, beam_list,
@@ -352,7 +355,7 @@ def plot_Tnoise_days(result_path, key_list_dict, beam_list,
 
         ax = axes[bi]
         ax.plot(tnoise_md_freq/1.e3, tnoise_md[:, pol, bi], color='k', lw=0.1)
-        ax.text(0.1, 0.85, 'Feed%02d'%bi, transform=ax.transAxes)
+        ax.text(0.1, 0.85, 'Feed%02d'%(bi+1), transform=ax.transAxes)
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(0.7, 1.4)
 
@@ -447,7 +450,7 @@ def plot_Tnoise_diff_days(result_path, key_list_dict, beam_list,
 
         ax = axes[bi]
         #ax.plot(tnoise_md_freq/1.e3, tnoise_md[:, pol, bi], color='k', lw=0.1)
-        ax.text(0.1, 0.85, 'Feed%02d'%bi, transform=ax.transAxes)
+        ax.text(0.1, 0.85, 'Feed%02d'%(bi+1), transform=ax.transAxes)
         ax.set_xlim(-0.12, 0.12)
         #ax.semilogy()
         ax.set_ylim(0, 1.5)

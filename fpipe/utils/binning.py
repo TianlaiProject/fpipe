@@ -173,6 +173,24 @@ def find_edges(axis, delta=None, logk=False):
 
     return edges
 
+def find_centers(axis, delta=None, logk=False):
+    """
+    service function for bin_catalog_data which
+    finds the bin center for the histogram
+    """
+    if logk:
+        axis = np.log10(axis)
+
+    if delta is None:
+        delta = axis[1] - axis[0]
+
+    centers = np.array(axis[:-1]) + delta / 2.
+
+    if logk:
+        centers = 10. ** centers
+
+    return centers
+
 
 def print_edges(sample, edges, name):
     """print bin edges for a catalog

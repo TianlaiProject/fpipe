@@ -146,7 +146,7 @@ class SurveySim(pipeline.TaskBase):
                 beam_data = _bd[:, 1]
             else:
                 fwhm1400=3./60.
-                beam_freq = np.linspace(800., 1600., 500).astype('float')
+                beam_freq = np.linspace(300., 1600., 500).astype('float')
                 beam_data = 1.2 * fwhm1400 * 1400. / beam_freq
 
             fwhm = interpolate.interp1d(beam_freq, beam_data)(freq)
@@ -173,7 +173,8 @@ class SurveySim(pipeline.TaskBase):
 
         if self.iter == self.iter_num:
             mpiutil.barrier()
-            next(super(SurveySim, self))
+            #next(super(SurveySim, self))
+            super(SurveySim, self).next()
 
         mock_n = self.mock_n
 
@@ -397,9 +398,11 @@ class SurveySim(pipeline.TaskBase):
             df.create_dataset('vis', data=vis, dtype = vis.dtype, shape = vis.shape)
             df['vis'].attrs['dimname'] = 'Time, Frequency, Polarization, Baseline'
 
-            df['pol'] = np.array(['hh', 'vv', 'hv', 'vh'])
-            df['pol'].attrs['pol_type'] = 'linear'
-            
+            #df['pol'] = np.array(['hh', 'vv', 'hv', 'vh'])
+            #df['pol'].attrs['pol_type'] = 'linear'
+            df['pol'] = np.array([0, 1, 2, 3])
+            df['pol'].attrs['dimname'] = 'Polarization, '
+
             df['feedno'] = self.feedno
             df['channo'] = self.channo
             df['channo'].attrs['dimname'] = 'Feed No., (HPolarization VPolarization)'
